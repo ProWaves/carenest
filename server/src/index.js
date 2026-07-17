@@ -27,29 +27,39 @@ const db = require('./config/database');
 const app = express();
 const server = http.createServer(app);
 
-// Socket.io
+// ============================================
+// SOCKET.IO CONFIGURATION
+// ============================================
 const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || 'http://localhost:5173',
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
-// Middleware
+// ============================================
+// MIDDLEWARE
+// ============================================
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Log all requests
-app.use((req, res, next) => {
-  console.log(`📨 ${req.method} ${req.url}`);
-  next();
-});
+// Log all requests (only in development)
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    console.log(`📨 ${req.method} ${req.url}`);
+    next();
+  });
+}
 
-// API routes
+// ============================================
+// API ROUTES
+// ============================================
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/babysitters', babysitterRoutes);
@@ -62,6 +72,10 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/jobs', jobRoutes);
+
+// ============================================
+// PUBLIC ENDPOINTS
+// ============================================
 
 // GET /api/cities
 app.get('/api/cities', async (req, res) => {
@@ -85,12 +99,52 @@ app.get('/api/skills', async (req, res) => {
   }
 });
 
-// GET /api/health
+// ============================================
+// HEALTH CHECK - For Render monitoring
+// ============================================
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    database: process.env.DATABASE_URL ? 'connected' : 'not configured',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+  });
 });
 
-// Error handling middleware
+// ============================================
+// ROOT ROUTE
+// ============================================
+app.get('/', (req, res) => {
+  res.json({
+    name: 'CareNest API',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth',
+      users: '/api/users',
+      babysitters: '/api/babysitters',
+      bookings: '/api/bookings',
+      reviews: '/api/reviews',
+      chat: '/api/chat',
+      reports: '/api/reports',
+      parent: '/api/parent',
+      admin: '/api/admin',
+      notifications: '/api/notifications',
+      ai: '/api/ai',
+      jobs: '/api/jobs',
+      cities: '/api/cities',
+      skills: '/api/skills',
+    },
+    documentation: 'https://github.com/ProWaves/carenest',
+  });
+});
+
+// ============================================
+// ERROR HANDLING MIDDLEWARE
+// ============================================
 app.use((err, req, res, next) => {
   console.error('❌ Server error:', err);
   console.error('❌ Stack:', err.stack);
@@ -101,13 +155,21 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
+// ============================================
+// 404 HANDLER
+// ============================================
 app.use((req, res) => {
   console.log(`❌ 404 - Route not found: ${req.method} ${req.url}`);
-  res.status(404).json({ error: 'Route not found', path: req.url });
+  res.status(404).json({ 
+    error: 'Route not found', 
+    path: req.url,
+    message: `The endpoint ${req.method} ${req.url} does not exist`
+  });
 });
 
-// Attach real-time chat handlers
+// ============================================
+// START SERVER
+// ============================================
 setupChatSocket(io);
 setNotificationIo(io);
 
@@ -116,4 +178,6 @@ server.listen(PORT, () => {
   console.log(`🚀 CareNest server running on port ${PORT}`);
   console.log(`🔌 Socket.io ready for real-time chat`);
   console.log(`📡 API available at http://localhost:${PORT}/api`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`✅ Health check: http://localhost:${PORT}/api/health`);
 });
