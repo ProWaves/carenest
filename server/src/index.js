@@ -6,6 +6,39 @@ const path = require('path');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
+// ============================================
+// RUN MIGRATIONS ON STARTUP (FREE TIER SOLUTION)
+// ============================================
+const { exec } = require('child_process');
+
+// Run migrations silently on startup
+function runMigrations() {
+  console.log('🔄 Checking database migrations...');
+  
+  // Try to run init.js
+  exec('node db/init.js', (error, stdout, stderr) => {
+    if (error) {
+      console.log('ℹ️ init.js already ran or error:', error.message);
+    } else {
+      console.log('✅ init.js completed');
+      if (stdout) console.log(stdout);
+    }
+  });
+
+  // Try to run seed.js
+  exec('node db/seed.js', (error, stdout, stderr) => {
+    if (error) {
+      console.log('ℹ️ seed.js already ran or error:', error.message);
+    } else {
+      console.log('✅ seed.js completed');
+      if (stdout) console.log(stdout);
+    }
+  });
+}
+
+// ============================================
+// REST OF YOUR CODE
+// ============================================
 const { setupChatSocket } = require('./sockets/chat');
 
 // Route modules
@@ -118,7 +151,7 @@ app.get('/api/health', (req, res) => {
 // ============================================
 app.get('/', (req, res) => {
   res.json({
-    name: 'CareNest API',
+    name: 'SitterSpot API',
     version: '1.0.0',
     status: 'running',
     endpoints: {
@@ -140,6 +173,51 @@ app.get('/', (req, res) => {
     },
     documentation: 'https://github.com/ProWaves/carenest',
   });
+});
+
+// ============================================
+// TEMPORARY MIGRATION ROUTE (REMOVE AFTER FIRST RUN)
+// ============================================
+app.get('/api/migrate', async (req, res) => {
+  try {
+    console.log('🔄 Running migrations via HTTP request...');
+    
+    // Run init
+    await new Promise((resolve) => {
+      exec('node db/init.js', (error, stdout, stderr) => {
+        if (error) {
+          console.log('⚠️ init.js error:', error.message);
+        } else {
+          console.log('✅ init.js completed');
+          if (stdout) console.log(stdout);
+        }
+        resolve();
+      });
+    });
+
+    // Run seed
+    await new Promise((resolve) => {
+      exec('node db/seed.js', (error, stdout, stderr) => {
+        if (error) {
+          console.log('⚠️ seed.js error:', error.message);
+        } else {
+          console.log('✅ seed.js completed');
+          if (stdout) console.log(stdout);
+        }
+        resolve();
+      });
+    });
+
+    res.json({ 
+      message: 'Migrations completed successfully!',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Migration failed', 
+      message: error.message 
+    });
+  }
 });
 
 // ============================================
@@ -170,12 +248,15 @@ app.use((req, res) => {
 // ============================================
 // START SERVER
 // ============================================
+// Run migrations when server starts
+runMigrations();
+
 setupChatSocket(io);
 setNotificationIo(io);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`🚀 CareNest server running on port ${PORT}`);
+  console.log(`🚀 SitterSpot server running on port ${PORT}`);
   console.log(`🔌 Socket.io ready for real-time chat`);
   console.log(`📡 API available at http://localhost:${PORT}/api`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
