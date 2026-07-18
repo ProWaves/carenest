@@ -8,11 +8,13 @@ const app = express();
 const server = http.createServer(app);
 
 // ============================================
-// 🔥 ULTIMATE CORS FIX - FIRST MIDDLEWARE
+// 🔥🔥🔥 ULTIMATE CORS FIX - FIRST MIDDLEWARE
 // ============================================
 app.use((req, res, next) => {
+  // Get origin from request or default to *
   const origin = req.headers.origin || '*';
   
+  // Set ALL CORS headers for EVERY request
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
@@ -21,10 +23,12 @@ app.use((req, res, next) => {
   
   console.log('🔥 CORS:', req.method, req.url, 'from', origin);
   
+  // Handle preflight requests immediately
   if (req.method === 'OPTIONS') {
     console.log('✅ CORS preflight OK');
     return res.sendStatus(204);
   }
+  
   next();
 });
 
@@ -147,6 +151,7 @@ app.get('/api/cities', async (req, res) => {
     const result = await db.query('SELECT DISTINCT city FROM users WHERE city IS NOT NULL AND city != \'\' ORDER BY city');
     res.json(result.rows.map(r => r.city));
   } catch (error) {
+    console.error('Cities error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
@@ -156,6 +161,7 @@ app.get('/api/skills', async (req, res) => {
     const result = await db.query('SELECT DISTINCT unnest(skills) as skill FROM babysitter_profiles WHERE skills IS NOT NULL ORDER BY skill');
     res.json(result.rows.map(r => r.skill));
   } catch (error) {
+    console.error('Skills error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
