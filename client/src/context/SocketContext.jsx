@@ -25,7 +25,10 @@ export function SocketProvider({ children }) {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    const s = io('/', {
+    // Use Render backend URL for WebSocket
+    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://sitterspot-backend.onrender.com';
+
+    const s = io(SOCKET_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -35,9 +38,17 @@ export function SocketProvider({ children }) {
       timeout: 10000,
     });
 
-    s.on('connect', () => setConnected(true));
-    s.on('disconnect', () => setConnected(false));
-    s.on('connect_error', () => {});
+    s.on('connect', () => {
+      console.log('🔌 Socket connected to:', SOCKET_URL);
+      setConnected(true);
+    });
+    s.on('disconnect', () => {
+      console.log('🔌 Socket disconnected');
+      setConnected(false);
+    });
+    s.on('connect_error', (error) => {
+      console.log('🔌 Socket connection error:', error.message);
+    });
 
     socketRef.current = s;
     setSocket(s);
@@ -46,6 +57,8 @@ export function SocketProvider({ children }) {
       s.removeAllListeners();
       s.close();
       socketRef.current = null;
+      setSocket(null);
+      setConnected(false);
     };
   }, [user?.id]);
 
