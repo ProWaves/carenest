@@ -11,10 +11,8 @@ const server = http.createServer(app);
 // 🔥🔥🔥 ULTIMATE CORS FIX - FIRST MIDDLEWARE
 // ============================================
 app.use((req, res, next) => {
-  // Get origin from request or default to *
   const origin = req.headers.origin || '*';
   
-  // Set ALL CORS headers for EVERY request
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
@@ -23,12 +21,10 @@ app.use((req, res, next) => {
   
   console.log('🔥 CORS:', req.method, req.url, 'from', origin);
   
-  // Handle preflight requests immediately
   if (req.method === 'OPTIONS') {
     console.log('✅ CORS preflight OK');
     return res.sendStatus(204);
   }
-  
   next();
 });
 
@@ -181,6 +177,23 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     status: 'running',
   });
+});
+
+// ============================================
+// TEMPORARY: Initialize Database via HTTP
+// ============================================
+app.get('/api/init-db', async (req, res) => {
+  try {
+    const { exec } = require('child_process');
+    exec('node src/db/init.js && node src/db/seed.js', (error, stdout, stderr) => {
+      if (error) {
+        return res.json({ error: error.message, stderr });
+      }
+      res.json({ message: 'Database initialized!', stdout });
+    });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
 });
 
 // ============================================
