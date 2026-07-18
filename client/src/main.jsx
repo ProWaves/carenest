@@ -16,17 +16,15 @@ import { ToastProvider } from './components/Toast';
 import './styles/App.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <LanguageProvider>
-          <SocketProvider>
-            <ToastProvider>
-              <App />
-            </ToastProvider>
-          </SocketProvider>
-        </LanguageProvider>
-      </AuthProvider>
-    </BrowserRouter>
-  </React.StrictMode>
+  <BrowserRouter>
+    <AuthProvider>
+      <LanguageProvider>
+        <SocketProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </SocketProvider>
+      </LanguageProvider>
+    </AuthProvider>
+  </BrowserRouter>
 );
