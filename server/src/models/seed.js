@@ -16,7 +16,7 @@ require('dotenv').config();
 
 const seed = async () => {
   try {
-    console.log('Seeding database...');
+    console.log('🌱 Seeding database...');
     const hash = (pw) => bcrypt.hashSync(pw, 10);
 
     // Clear all existing non-admin data (order respects foreign key constraints)
@@ -31,7 +31,7 @@ const seed = async () => {
     await db.query('DELETE FROM children');
     await db.query('DELETE FROM babysitter_profiles');
     await db.query("DELETE FROM users WHERE role != 'admin'");
-    console.log('Cleared existing data');
+    console.log('✅ Cleared existing data');
 
     // ─── PARENTS ──────────────────────────────────────────────────────────────
     const parentsData = [
@@ -49,7 +49,7 @@ const seed = async () => {
       );
       parentIds.push(r.rows[0].id);
     }
-    console.log(`Created ${parentIds.length} parents`);
+    console.log(`✅ Created ${parentIds.length} parents`);
 
     // ─── CHILDREN ─────────────────────────────────────────────────────────────
     const childrenData = [
@@ -63,13 +63,15 @@ const seed = async () => {
       { parent_id: parentIds[4], name: 'Ella', age: 8, notes: 'Soccer on Saturdays' },
       { parent_id: parentIds[4], name: 'Mia', age: 4, notes: null },
     ];
+    const childIds = [];
     for (const c of childrenData) {
-      await db.query(
-        'INSERT INTO children (parent_id, name, age, notes) VALUES ($1, $2, $3, $4)',
+      const r = await db.query(
+        `INSERT INTO children (parent_id, name, age, notes) VALUES ($1, $2, $3, $4) RETURNING id`,
         [c.parent_id, c.name, c.age, c.notes]
       );
+      childIds.push(r.rows[0].id);
     }
-    console.log(`Created ${childrenData.length} children`);
+    console.log(`✅ Created ${childrenData.length} children`);
 
     // ─── BABYSITTERS ──────────────────────────────────────────────────────────
     const babysittersData = [
@@ -95,47 +97,42 @@ const seed = async () => {
         [uid, b.bio, b.hourly_rate, b.experience_years, b.skills, b.status, b.status === 'approved']
       );
     }
-    console.log(`Created ${babysittersData.length} babysitters`);
+    console.log(`✅ Created ${babysittersData.length} babysitters`);
 
     // ─── AVAILABILITY ─────────────────────────────────────────────────────────
-    // Even-indexed sitters get Mon-Fri, odd-indexed get Mon/Wed/Fri/Sat
     for (let i = 0; i < babysitterIds.length; i++) {
       const pid = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [babysitterIds[i]]);
       const pidVal = pid.rows[0].id;
-      const days = [];
-      if (i % 2 === 0) {
-        days.push(1, 2, 3, 4, 5);
-      } else {
-        days.push(1, 3, 5, 6);
-      }
+      const days = i % 2 === 0 ? [1, 2, 3, 4, 5] : [1, 3, 5, 6];
       for (const d of days) {
         await db.query(
-          'INSERT INTO babysitter_availability (babysitter_id, day_of_week, start_time, end_time, is_available) VALUES ($1, $2, $3, $4, true)',
+          `INSERT INTO babysitter_availability (babysitter_id, day_of_week, start_time, end_time, is_available) 
+           VALUES ($1, $2, $3, $4, true)`,
           [pidVal, d, '09:00', d === 6 ? '16:00' : '18:00']
         );
       }
     }
-    console.log('Created availability');
+    console.log('✅ Created availability');
 
     // ─── DOCUMENTS ────────────────────────────────────────────────────────────
-    // First 5 sitters get an ID card; first 4 also get a CV
     for (let i = 0; i < Math.min(5, babysitterIds.length); i++) {
       const pid = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [babysitterIds[i]]);
       await db.query(
-        "INSERT INTO babysitter_documents (babysitter_id, document_type, document_url, is_verified) VALUES ($1, 'id_card', '/uploads/seed/sample_id.pdf', $2)",
+        `INSERT INTO babysitter_documents (babysitter_id, document_type, document_url, is_verified) 
+         VALUES ($1, 'id_card', '/uploads/seed/sample_id.pdf', $2)`,
         [pid.rows[0].id, i < 4]
       );
       if (i < 4) {
         await db.query(
-          "INSERT INTO babysitter_documents (babysitter_id, document_type, document_url, is_verified) VALUES ($1, 'cv', '/uploads/seed/sample_cv.pdf', $2)",
+          `INSERT INTO babysitter_documents (babysitter_id, document_type, document_url, is_verified) 
+           VALUES ($1, 'cv', '/uploads/seed/sample_cv.pdf', $2)`,
           [pid.rows[0].id, i < 3]
         );
       }
     }
-    console.log('Created documents');
+    console.log('✅ Created documents');
 
     // ─── BOOKINGS ─────────────────────────────────────────────────────────────
-    // 8 bookings spanning all statuses and various dates (past/future)
     const statuses = ['completed', 'completed', 'completed', 'confirmed', 'in_progress', 'pending', 'completed', 'cancelled'];
     const bookingIds = [];
     const now = new Date();
@@ -143,7 +140,7 @@ const seed = async () => {
       const s = statuses[i];
       const parentIdx = i % parentIds.length;
       const bsIdx = i % babysitterIds.length;
-      const childIdx = i % childrenData.length;
+      const childIdx = i % childIds.length;
       const pastDays = s === 'cancelled' ? 5 : s === 'pending' ? -3 : s === 'in_progress' ? -1 : s === 'confirmed' ? -7 : 15 + i;
       const startDate = new Date(now);
       startDate.setDate(startDate.getDate() - pastDays);
@@ -158,15 +155,15 @@ const seed = async () => {
       const r = await db.query(
         `INSERT INTO bookings (parent_id, babysitter_id, child_id, start_date, end_date, start_time, end_time, status, total_hours, total_amount, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
-        [parentIds[parentIdx], babysitterIds[bsIdx], childrenData[childIdx].parent_id === parentIds[parentIdx] ? childIdx + 1 : null,
-         startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0], startTime, endTime, s, totalHours, totalAmount, 'Great babysitter!']
+        [parentIds[parentIdx], babysitterIds[bsIdx], childIds[childIdx],
+         startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0], 
+         startTime, endTime, s, totalHours, totalAmount, 'Great babysitter!']
       );
       bookingIds.push(r.rows[0].id);
     }
-    console.log(`Created ${bookingIds.length} bookings`);
+    console.log(`✅ Created ${bookingIds.length} bookings`);
 
     // ─── REVIEWS ──────────────────────────────────────────────────────────────
-    // One review for each of the first 5 (completed) bookings
     const reviewTexts = [
       'Amazing babysitter! My kids absolutely love her. Very professional and caring.',
       'Great experience. Punctual, friendly, and very good with children.',
@@ -176,30 +173,31 @@ const seed = async () => {
       'Très bonne babysitter, ponctuelle et douce avec les enfants.',
       'Wonderful caregiver. Kept us updated throughout the day.',
     ];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < Math.min(5, bookingIds.length); i++) {
       const b = await db.query('SELECT * FROM bookings WHERE id = $1', [bookingIds[i]]);
-      await db.query(
-        'INSERT INTO reviews (booking_id, parent_id, babysitter_id, rating, comment) VALUES ($1, $2, $3, $4, $5)',
-        [bookingIds[i], b.rows[0].parent_id, b.rows[0].babysitter_id, 4 + (i % 2), reviewTexts[i]]
-      );
+      if (b.rows.length > 0) {
+        await db.query(
+          `INSERT INTO reviews (booking_id, parent_id, babysitter_id, rating, comment) 
+           VALUES ($1, $2, $3, $4, $5)`,
+          [bookingIds[i], b.rows[0].parent_id, b.rows[0].babysitter_id, 4 + (i % 2), reviewTexts[i]]
+        );
+      }
     }
-    console.log('Created reviews');
+    console.log('✅ Created reviews');
 
     // ─── FAVORITES ────────────────────────────────────────────────────────────
-    // Each parent favorites 2 babysitters
     for (let i = 0; i < parentIds.length; i++) {
       for (let j = 0; j < 2; j++) {
         const bsIdx = (i + j) % babysitterIds.length;
         await db.query(
-          'INSERT INTO favorites (parent_id, babysitter_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          `INSERT INTO favorites (parent_id, babysitter_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
           [parentIds[i], babysitterIds[bsIdx]]
         );
       }
     }
-    console.log('Created favorites');
+    console.log('✅ Created favorites');
 
     // ─── MESSAGES ─────────────────────────────────────────────────────────────
-    // Sample conversation threads (EN and FR) + one unread message
     const convoMessages = [
       { sender: 0, receiver: 0, text: 'Hello! Are you available this weekend?' },
       { sender: 0, receiver: 0, text: 'Hi! Yes, I am available on Saturday. What time?' },
@@ -210,37 +208,35 @@ const seed = async () => {
       { sender: 1, receiver: 1, text: 'Parfait, je vous réserve!' },
     ];
     for (const m of convoMessages) {
-      const senderId = parentIds[m.sender];
-      const receiverId = babysitterIds[m.receiver];
       await db.query(
-        'INSERT INTO messages (sender_id, receiver_id, content, is_read) VALUES ($1, $2, $3, $4)',
-        [senderId, receiverId, m.text, true]
+        `INSERT INTO messages (sender_id, receiver_id, content, is_read) VALUES ($1, $2, $3, true)`,
+        [parentIds[m.sender], babysitterIds[m.receiver], m.text]
       );
     }
-    // One unread message to demonstrate notification
     await db.query(
-      'INSERT INTO messages (sender_id, receiver_id, content) VALUES ($1, $2, $3)',
+      `INSERT INTO messages (sender_id, receiver_id, content) VALUES ($1, $2, $3)`,
       [parentIds[0], babysitterIds[0], 'Hi, just confirming our booking for tomorrow!']
     );
-    console.log('Created messages');
+    console.log('✅ Created messages');
 
     // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
-    // Booking confirmed notifications for parents, new booking requests for sitters
     for (let i = 0; i < parentIds.length; i++) {
       await db.query(
-        "INSERT INTO notifications (user_id, type, title, message, is_read) VALUES ($1, 'booking_confirmed', 'Booking Confirmed', 'Your booking has been confirmed by the babysitter.', $2)",
+        `INSERT INTO notifications (user_id, type, title, message, is_read) 
+         VALUES ($1, 'booking_confirmed', 'Booking Confirmed', 'Your booking has been confirmed by the babysitter.', $2)`,
         [parentIds[i], i < 3]
       );
     }
     for (let i = 0; i < Math.min(3, babysitterIds.length); i++) {
       await db.query(
-        "INSERT INTO notifications (user_id, type, title, message, is_read) VALUES ($1, 'new_booking', 'New Booking Request', 'You have received a new booking request from a parent.', $2)",
+        `INSERT INTO notifications (user_id, type, title, message, is_read) 
+         VALUES ($1, 'new_booking', 'New Booking Request', 'You have received a new booking request from a parent.', $2)`,
         [babysitterIds[i], i < 2]
       );
     }
-    console.log('Created notifications');
+    console.log('✅ Created notifications');
 
-    console.log('\n=== Seed Complete ===');
+    console.log('\n=== ✅ Seed Complete ===');
     console.log('Login credentials (password: Password123!):');
     for (const p of parentsData) console.log(`  Parent: ${p.email}`);
     for (const b of babysittersData) console.log(`  Babysitter: ${b.email}`);
@@ -248,7 +244,7 @@ const seed = async () => {
 
     process.exit(0);
   } catch (error) {
-    console.error('Seed error:', error);
+    console.error('❌ Seed error:', error);
     process.exit(1);
   }
 };
