@@ -7,75 +7,140 @@ const { Server } = require('socket.io');
 require('dotenv').config();
 
 // ============================================
-// RUN MIGRATIONS ON STARTUP (FREE TIER SOLUTION)
+// RUN MIGRATIONS ON STARTUP
 // ============================================
 const { exec } = require('child_process');
 const fs = require('fs');
 
-// Run migrations silently on startup
 function runMigrations() {
-  console.log('🔄 Checking database migrations...');
+  console.log('🔄 Running database migrations...');
   
-  // Check if files exist before running
+  // Run init.js first (creates tables)
   const initPath = './src/db/init.js';
-  const seedPath = './src/db/seed.js';
-  
-  // Try to run init.js
   if (fs.existsSync(initPath)) {
+    console.log('📦 Running init.js...');
     exec(`node ${initPath}`, (error, stdout, stderr) => {
       if (error) {
-        console.log('ℹ️ init.js already ran or error:', error.message);
+        console.log('⚠️ init.js error:', error.message);
       } else {
-        console.log('✅ init.js completed');
         if (stdout) console.log(stdout);
+        if (stderr) console.error(stderr);
+        console.log('✅ init.js completed');
       }
     });
-  } else {
-    console.log('ℹ️ init.js not found at', initPath);
   }
 
-  // Try to run seed.js
+  // Run all migration files
+  const migrationFiles = [
+    './src/db/migrations/003_add_review_and_admin_features.js',
+    './src/db/migrations/004_add_user_locations.js',
+    './src/db/migrations/005_enhance_reports_table.js',
+    './src/db/migrations/007_add_availability_publishing.js',
+    './src/db/migrations/008_add_availability_booking_integration.js',
+    './src/db/migrations/010_add_job_posts_table.js',
+    './src/db/migrations/011_add_location_tracking.js',
+    './src/db/migrations/012_add_refunds_table.js',
+    './src/db/migrations/013_fix_reports_columns.js',
+  ];
+
+  for (const file of migrationFiles) {
+    if (fs.existsSync(file)) {
+      console.log(`📦 Running migration: ${file}`);
+      exec(`node ${file}`, (error, stdout, stderr) => {
+        if (error) {
+          console.log(`⚠️ Migration error: ${error.message}`);
+        } else {
+          if (stdout) console.log(stdout);
+          if (stderr) console.error(stderr);
+          console.log(`✅ Migration completed: ${file}`);
+        }
+      });
+    } else {
+      console.log(`⚠️ Migration file not found: ${file}`);
+    }
+  }
+
+  // Run seed.js last
+  const seedPath = './src/db/seed.js';
   if (fs.existsSync(seedPath)) {
+    console.log('📦 Running seed.js...');
     exec(`node ${seedPath}`, (error, stdout, stderr) => {
       if (error) {
-        console.log('ℹ️ seed.js already ran or error:', error.message);
+        console.log('⚠️ seed.js error:', error.message);
       } else {
-        console.log('✅ seed.js completed');
         if (stdout) console.log(stdout);
+        if (stderr) console.error(stderr);
+        console.log('✅ seed.js completed');
       }
     });
-  } else {
-    console.log('ℹ️ seed.js not found at', seedPath);
   }
 }
 
 // ============================================
-// CORS CONFIGURATION
+// CORS CONFIGURATION - FIXED FOR PRODUCTION
 // ============================================
 const allowedOrigins = [
+  // Local development
   'http://localhost:5173',
   'http://localhost:3000',
   'http://localhost:5000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  
+  // Vercel production URLs
+  'https://carenest-rzmg-git-main-provaves-projects-6643b984.vercel.app',
+  'https://carenest-rzmg-qz7q73mdb-provaves-projects-6643b984.vercel.app',
   'https://carenest-rzmg-seven.vercel.app',
-  process.env.CLIENT_URL
-].filter(Boolean); // Remove undefined values
+  'https://carenest.vercel.app',
+  
+  // Railway backend URL
+  'https://sitterspot-production-fc11.up.railway.app',
+  
+  // Allow all vercel.app subdomains (preview deployments)
+  process.env.CLIENT_URL,
+].filter(Boolean);
 
+// Also allow any .vercel.app domain via regex
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('✅ CORS: No origin, allowing');
+      return callback(null, true);
+    }
     
     // Check if origin is allowed
-    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed === origin) return true;
+      // Check for .vercel.app domains
+      if (origin.endsWith('.vercel.app')) return true;
+      return false;
+    });
+    
+    if (isAllowed) {
+      console.log(`✅ CORS allowed: ${origin}`);
       callback(null, true);
     } else {
-      console.log('❌ CORS blocked origin:', origin);
+      console.log(`❌ CORS blocked: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'Accept',
+    'Origin',
+    'Access-Control-Allow-Origin',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Allow-Methods'
+  ],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 };
 
 // ============================================
@@ -96,6 +161,7 @@ const notificationRoutes = require('./routes/notifications');
 const reportRoutes = require('./routes/reports');
 const aiRoutes = require('./routes/aiChatbot');
 const jobRoutes = require('./routes/jobs');
+const adminChatbotRoutes = require('./routes/adminChatbot');
 const { setIo: setNotificationIo } = require('./routes/notifications');
 const db = require('./config/database');
 
@@ -107,15 +173,17 @@ const server = http.createServer(app);
 // ============================================
 const io = new Server(server, {
   cors: corsOptions,
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
 // ============================================
 // MIDDLEWARE
 // ============================================
+// CORS must come BEFORE other middleware
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Log all requests (only in development)
 if (process.env.NODE_ENV !== 'production') {
@@ -123,7 +191,25 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`📨 ${req.method} ${req.url}`);
     next();
   });
+} else {
+  // Production: log only errors and important requests
+  app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') {
+      res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      return res.sendStatus(204);
+    }
+    next();
+  });
 }
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ============================================
 // API ROUTES
@@ -140,6 +226,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/admin/chatbot', adminChatbotRoutes);
 
 // ============================================
 // PUBLIC ENDPOINTS
@@ -168,7 +255,7 @@ app.get('/api/skills', async (req, res) => {
 });
 
 // ============================================
-// HEALTH CHECK - For Render monitoring
+// HEALTH CHECK - For Railway monitoring
 // ============================================
 app.get('/api/health', (req, res) => {
   res.json({ 
@@ -189,6 +276,7 @@ app.get('/', (req, res) => {
     name: 'SitterSpot API',
     version: '1.0.0',
     status: 'running',
+    environment: process.env.NODE_ENV || 'development',
     endpoints: {
       health: '/api/health',
       auth: '/api/auth',
@@ -206,12 +294,11 @@ app.get('/', (req, res) => {
       cities: '/api/cities',
       skills: '/api/skills',
     },
-    documentation: 'https://github.com/ProWaves/carenest',
   });
 });
 
 // ============================================
-// TEMPORARY MIGRATION ROUTE (REMOVE AFTER FIRST RUN)
+// MIGRATION ENDPOINT (Admin only - for debugging)
 // ============================================
 app.get('/api/migrate', async (req, res) => {
   try {
@@ -236,8 +323,6 @@ app.get('/api/migrate', async (req, res) => {
           resolve();
         });
       });
-    } else {
-      console.log('ℹ️ init.js not found');
     }
 
     // Run seed
@@ -254,8 +339,6 @@ app.get('/api/migrate', async (req, res) => {
           resolve();
         });
       });
-    } else {
-      console.log('ℹ️ seed.js not found');
     }
 
     res.json({ 
@@ -278,9 +361,27 @@ app.get('/api/migrate', async (req, res) => {
 app.use((err, req, res, next) => {
   console.error('❌ Server error:', err);
   console.error('❌ Stack:', err.stack);
+  
+  // Handle specific error types
+  if (err.name === 'UnauthorizedError' || err.name === 'JsonWebTokenError') {
+    return res.status(401).json({ error: 'Invalid or expired token.' });
+  }
+  
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({ error: err.message });
+  }
+  
+  if (err.code === '23505') { // PostgreSQL unique violation
+    return res.status(409).json({ error: 'Duplicate entry.' });
+  }
+  
+  if (err.code === '23503') { // PostgreSQL foreign key violation
+    return res.status(400).json({ error: 'Referenced record not found.' });
+  }
+  
   res.status(500).json({ 
     error: 'Internal server error', 
-    message: err.message,
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
@@ -300,17 +401,50 @@ app.use((req, res) => {
 // ============================================
 // START SERVER
 // ============================================
-// Run migrations when server starts
+// Run migrations when server starts (async)
 runMigrations();
 
+// Setup Socket.io
 setupChatSocket(io);
 setNotificationIo(io);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+const HOST = '0.0.0.0'; // Important for Railway
+
+server.listen(PORT, HOST, () => {
   console.log(`🚀 SitterSpot server running on port ${PORT}`);
   console.log(`🔌 Socket.io ready for real-time chat`);
   console.log(`📡 API available at http://localhost:${PORT}/api`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`✅ Health check: http://localhost:${PORT}/api/health`);
+  console.log(`📍 CORS allowed origins: ${allowedOrigins.join(', ')}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err);
+  console.error('Stack:', err.stack);
+  // Don't exit the process, let it recover
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
 });
