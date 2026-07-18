@@ -61,6 +61,7 @@ function runMigrations() {
     './src/db/migrations/011_add_location_tracking.js',
     './src/db/migrations/012_add_refunds_table.js',
     './src/db/migrations/013_fix_reports_columns.js',
+    './src/db/migrations/014_add_missing_columns.js',
   ];
 
   for (const file of migrationFiles) {
