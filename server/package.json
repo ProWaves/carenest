@@ -4,6 +4,7 @@
   "description": "SitterSpot Backend",
   "main": "src/index.js",
   "scripts": {
+    "build":"echo 'No build step required'",
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "db:init": "node src/models/init.js",
