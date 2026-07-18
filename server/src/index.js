@@ -63,6 +63,7 @@ function runMigrations() {
     './src/db/migrations/013_fix_reports_columns.js',
     './src/db/migrations/014_add_missing_columns.js',
     './src/db/migrations/015_add_missing_columns_v2.js',
+    './src/db/migrations/016_add_cancellation_reason.js',
   ];
 
   for (const file of migrationFiles) {
