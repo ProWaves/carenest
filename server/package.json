@@ -4,12 +4,8 @@
   "description": "SitterSpot Backend",
   "main": "src/index.js",
   "scripts": {
-    "build":"echo 'No build step required'",
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "db:init": "node src/models/init.js",
-    "db:migrate": "node src/models/migrate.js",
-    "db:seed": "node src/models/seed.js"
+    "dev": "nodemon src/index.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
