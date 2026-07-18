@@ -1,5 +1,5 @@
 // server/src/db/migrations/005_enhance_reports_table.js
-const db = require('../../config/database');
+const db = require('../../src/config/database');
 
 const migrate = async () => {
   try {

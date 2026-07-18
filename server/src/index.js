@@ -10,30 +10,43 @@ require('dotenv').config();
 // RUN MIGRATIONS ON STARTUP (FREE TIER SOLUTION)
 // ============================================
 const { exec } = require('child_process');
+const fs = require('fs');
 
 // Run migrations silently on startup
 function runMigrations() {
   console.log('🔄 Checking database migrations...');
   
+  // Check if files exist before running
+  const initPath = './src/db/init.js';
+  const seedPath = './src/db/seed.js';
+  
   // Try to run init.js
-  exec('node db/init.js', (error, stdout, stderr) => {
-    if (error) {
-      console.log('ℹ️ init.js already ran or error:', error.message);
-    } else {
-      console.log('✅ init.js completed');
-      if (stdout) console.log(stdout);
-    }
-  });
+  if (fs.existsSync(initPath)) {
+    exec(`node ${initPath}`, (error, stdout, stderr) => {
+      if (error) {
+        console.log('ℹ️ init.js already ran or error:', error.message);
+      } else {
+        console.log('✅ init.js completed');
+        if (stdout) console.log(stdout);
+      }
+    });
+  } else {
+    console.log('ℹ️ init.js not found at', initPath);
+  }
 
   // Try to run seed.js
-  exec('node db/seed.js', (error, stdout, stderr) => {
-    if (error) {
-      console.log('ℹ️ seed.js already ran or error:', error.message);
-    } else {
-      console.log('✅ seed.js completed');
-      if (stdout) console.log(stdout);
-    }
-  });
+  if (fs.existsSync(seedPath)) {
+    exec(`node ${seedPath}`, (error, stdout, stderr) => {
+      if (error) {
+        console.log('ℹ️ seed.js already ran or error:', error.message);
+      } else {
+        console.log('✅ seed.js completed');
+        if (stdout) console.log(stdout);
+      }
+    });
+  } else {
+    console.log('ℹ️ seed.js not found at', seedPath);
+  }
 }
 
 // ============================================
@@ -182,34 +195,51 @@ app.get('/api/migrate', async (req, res) => {
   try {
     console.log('🔄 Running migrations via HTTP request...');
     
+    const initPath = './src/db/init.js';
+    const seedPath = './src/db/seed.js';
+    let initRan = false;
+    let seedRan = false;
+
     // Run init
-    await new Promise((resolve) => {
-      exec('node db/init.js', (error, stdout, stderr) => {
-        if (error) {
-          console.log('⚠️ init.js error:', error.message);
-        } else {
-          console.log('✅ init.js completed');
-          if (stdout) console.log(stdout);
-        }
-        resolve();
+    if (fs.existsSync(initPath)) {
+      await new Promise((resolve) => {
+        exec(`node ${initPath}`, (error, stdout, stderr) => {
+          if (error) {
+            console.log('⚠️ init.js error:', error.message);
+          } else {
+            console.log('✅ init.js completed');
+            initRan = true;
+            if (stdout) console.log(stdout);
+          }
+          resolve();
+        });
       });
-    });
+    } else {
+      console.log('ℹ️ init.js not found');
+    }
 
     // Run seed
-    await new Promise((resolve) => {
-      exec('node db/seed.js', (error, stdout, stderr) => {
-        if (error) {
-          console.log('⚠️ seed.js error:', error.message);
-        } else {
-          console.log('✅ seed.js completed');
-          if (stdout) console.log(stdout);
-        }
-        resolve();
+    if (fs.existsSync(seedPath)) {
+      await new Promise((resolve) => {
+        exec(`node ${seedPath}`, (error, stdout, stderr) => {
+          if (error) {
+            console.log('⚠️ seed.js error:', error.message);
+          } else {
+            console.log('✅ seed.js completed');
+            seedRan = true;
+            if (stdout) console.log(stdout);
+          }
+          resolve();
+        });
       });
-    });
+    } else {
+      console.log('ℹ️ seed.js not found');
+    }
 
     res.json({ 
-      message: 'Migrations completed successfully!',
+      message: 'Migrations completed!',
+      initRan,
+      seedRan,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

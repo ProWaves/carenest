@@ -1,5 +1,5 @@
 // server/src/db/migrations/003_add_review_and_admin_features.js
-const db = require('../../config/database');
+const db = require('../../src/config/database');
 
 const migrate = async () => {
   try {
