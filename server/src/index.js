@@ -6,21 +6,7 @@ require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
-const cors = require('cors');
-const app = express();
 
-// Configure CORS options
-const corsOptions = {
-  origin: 'https://carenest-rzmg-seven.vercel.app', 
-  credentials: true, // Allow cookies/auth headers if needed
-  optionsSuccessStatus: 200
-};
-
-// Apply the middleware before your routes
-app.use(cors(corsOptions));
-
-// Your routes go below this
-app.use('/api/auth', authRoutes);
 
 // ============================================
 // 🔥🔥🔥 ULTIMATE CORS FIX - FIRST MIDDLEWARE
