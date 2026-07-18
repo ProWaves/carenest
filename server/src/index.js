@@ -1,4 +1,3 @@
-// server/src/index.js
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -14,7 +13,6 @@ const server = http.createServer(app);
 app.use((req, res, next) => {
   const origin = req.headers.origin || '*';
   
-  // Set ALL CORS headers unconditionally
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
@@ -23,17 +21,15 @@ app.use((req, res, next) => {
   
   console.log('🔥 CORS:', req.method, req.url, 'from', origin);
   
-  // Handle preflight immediately
   if (req.method === 'OPTIONS') {
     console.log('✅ CORS preflight OK');
     return res.sendStatus(204);
   }
-  
   next();
 });
 
 // ============================================
-// RUN MIGRATIONS ON STARTUP
+// RUN MIGRATIONS
 // ============================================
 const { exec } = require('child_process');
 const fs = require('fs');
@@ -146,13 +142,11 @@ app.use('/api/admin/chatbot', adminChatbotRoutes);
 // ============================================
 // PUBLIC ENDPOINTS
 // ============================================
-
 app.get('/api/cities', async (req, res) => {
   try {
     const result = await db.query('SELECT DISTINCT city FROM users WHERE city IS NOT NULL AND city != \'\' ORDER BY city');
     res.json(result.rows.map(r => r.city));
   } catch (error) {
-    console.error('Cities error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
@@ -162,7 +156,6 @@ app.get('/api/skills', async (req, res) => {
     const result = await db.query('SELECT DISTINCT unnest(skills) as skill FROM babysitter_profiles WHERE skills IS NOT NULL ORDER BY skill');
     res.json(result.rows.map(r => r.skill));
   } catch (error) {
-    console.error('Skills error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
@@ -173,7 +166,6 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     database: process.env.DATABASE_URL ? 'connected' : 'not configured',
-    uptime: process.uptime(),
   });
 });
 
@@ -190,10 +182,7 @@ app.get('/', (req, res) => {
 // ============================================
 app.use((err, req, res, next) => {
   console.error('❌ Server error:', err);
-  res.status(500).json({ 
-    error: 'Internal server error', 
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
-  });
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 app.use((req, res) => {
@@ -225,19 +214,4 @@ const HOST = '0.0.0.0';
 server.listen(PORT, HOST, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔥 CORS: ALLOWING ALL ORIGINS`);
-  console.log(`📍 Health: http://localhost:${PORT}/api/health`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 Shutting down...');
-  server.close(() => process.exit(0));
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('💥 Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('💥 Unhandled Rejection:', reason);
 });
