@@ -7,7 +7,6 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
-
 // ============================================
 // 🔥🔥🔥 ULTIMATE CORS FIX - FIRST MIDDLEWARE
 // ============================================
@@ -38,7 +37,7 @@ const fs = require('fs');
 function runMigrations() {
   console.log('🔄 Running database migrations...');
   
-  const initPath = './src/db/init.js';
+  const initPath = './src/models/init.js';
   if (fs.existsSync(initPath)) {
     console.log('📦 Running init.js...');
     exec(`node ${initPath}`, (error, stdout, stderr) => {
@@ -81,7 +80,7 @@ function runMigrations() {
     }
   }
 
-  const seedPath = './src/db/seed.js';
+  const seedPath = './src/models/seed.js';
   if (fs.existsSync(seedPath)) {
     console.log('📦 Running seed.js...');
     exec(`node ${seedPath}`, (error, stdout, stderr) => {
@@ -186,7 +185,7 @@ app.get('/', (req, res) => {
 app.get('/api/init-db', async (req, res) => {
   try {
     const { exec } = require('child_process');
-    exec('node src/db/init.js && node src/db/seed.js', (error, stdout, stderr) => {
+    exec('node src/models/init.js && node src/models/seed.js', (error, stdout, stderr) => {
       if (error) {
         return res.json({ error: error.message, stderr });
       }
