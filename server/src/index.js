@@ -447,4 +447,4 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('💥 Unhandled Rejection at:', promise);
   console.error('Reason:', reason);
-});
+});// Restart server - Sat Jul 18 14:06:40 MEST 2026
