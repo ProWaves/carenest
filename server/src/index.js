@@ -232,5 +232,5 @@ const HOST = '0.0.0.0';
 
 server.listen(PORT, HOST, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔥 CORS: ALLOWING ALL ORIGINS`);
+  console.log(`🔥 CORS: ALLOWING SELECTED ORIGINS`);
 });
