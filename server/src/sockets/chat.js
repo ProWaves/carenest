@@ -51,6 +51,15 @@ const setupChatSocket = (io) => {
       }
     });
 
+    // Leave a specific room
+    socket.on('chat:leave', (data) => {
+      const { room } = data;
+      if (room) {
+        socket.leave(room);
+        console.log(`📢 User ${socket.userId} left room: ${room}`);
+      }
+    });
+
     // Handle incoming chat message: persist to DB and emit to both parties
     socket.on('chat:message', async (data) => {
       try {
@@ -111,6 +120,11 @@ const setupChatSocket = (io) => {
       } catch (error) {
         console.error('❌ Mark read error:', error);
       }
+    });
+
+    // Get online users
+    socket.on('chat:getOnlineUsers', () => {
+      socket.emit('users:online', Array.from(connectedUsers.keys()));
     });
 
     // Handle ping to keep connection alive
