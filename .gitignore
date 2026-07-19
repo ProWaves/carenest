@@ -38,3 +38,5 @@ uploads/
 
 # Backup
 *.bak
+
+.vercel
