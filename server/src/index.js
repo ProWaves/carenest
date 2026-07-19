@@ -11,31 +11,42 @@ const server = http.createServer(app);
 // ULTIMATE CORS FIX - FIRST MIDDLEWARE
 // ============================================
 app.use((req, res, next) => {
-  // Get the origin from the request
   const origin = req.headers.origin || '*';
   
-  // List of allowed origins for production
+  // List of allowed origins
   const allowedOrigins = [
-    'https://valiant-abundance-production-e47f.up.railway.app',
+    'https://sitterspot-backend.onrender.com',
     'https://carenest-rzmg-seven.vercel.app',
+    'https://carenest-red.vercel.app',
+    'https://carenest.vercel.app',
     'https://carenest-rzmg.vercel.app',
+    'https://carenest-9l1g5cxk3-prowaves-projects-6643b984.vercel.app',
     'http://localhost:8081',
     'http://localhost:5000',
+    'http://localhost:5173',
+    'http://localhost:3000',
     'exp://localhost:8081',
     'exp://10.144.149.5:8081',
     'http://192.168.1.*',
     'http://10.*.*.*'
   ];
 
-  // Allow all origins for development - set to '*'
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // Check if origin is allowed
+  const allowedOrigin = allowedOrigins.includes(origin) ? origin : '*';
+  
+  // Set CORS headers - IMPORTANT: Cannot use '*' when credentials are true
+  if (allowedOrigin !== '*') {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Accept-Language');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Max-Age', '86400');
   
-  // Log CORS requests
-  console.log('🔥 CORS:', req.method, req.url, 'from', origin);
+  console.log('🔥 CORS:', req.method, req.url, 'from', origin, '->', allowedOrigin);
   
   // Handle preflight OPTIONS requests
   if (req.method === 'OPTIONS') {
@@ -254,6 +265,6 @@ const HOST = '0.0.0.0';
 
 server.listen(PORT, HOST, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔥 CORS: ALLOWING ALL ORIGINS`);
+  console.log(`🔥 CORS: ALLOWING SPECIFIC ORIGINS`);
   console.log(`📁 Uploads served from: ${path.join(__dirname, '../uploads')}`);
 });
