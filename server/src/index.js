@@ -19,10 +19,10 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Max-Age', '86400');
   
-  console.log('🔥 CORS:', req.method, req.url, 'from', origin);
+  console.log('CORS:', req.method, req.url, 'from', origin);
   
   if (req.method === 'OPTIONS') {
-    console.log('✅ CORS preflight OK');
+    console.log('CORS preflight OK');
     return res.sendStatus(204);
   }
   next();
@@ -35,18 +35,18 @@ const { exec } = require('child_process');
 const fs = require('fs');
 
 function runMigrations() {
-  console.log('🔄 Running database migrations...');
+  console.log('Running database migrations...');
   
   const initPath = './src/models/init.js';
   if (fs.existsSync(initPath)) {
-    console.log('📦 Running init.js...');
+    console.log('Running init.js...');
     exec(`node ${initPath}`, (error, stdout, stderr) => {
       if (error) {
-        console.log('⚠️ init.js error:', error.message);
+        console.log('init.js error:', error.message);
       } else {
         if (stdout) console.log(stdout);
         if (stderr) console.error(stderr);
-        console.log('✅ init.js completed');
+        console.log('init.js completed');
       }
     });
   }
@@ -68,31 +68,31 @@ function runMigrations() {
 
   for (const file of migrationFiles) {
     if (fs.existsSync(file)) {
-      console.log(`📦 Running migration: ${file}`);
+      console.log(`Running migration: ${file}`);
       exec(`node ${file}`, (error, stdout, stderr) => {
         if (error) {
-          console.log(`⚠️ Migration error: ${error.message}`);
+          console.log(`Migration error: ${error.message}`);
         } else {
           if (stdout) console.log(stdout);
           if (stderr) console.error(stderr);
-          console.log(`✅ Migration completed: ${file}`);
+          console.log(`Migration completed: ${file}`);
         }
       });
     } else {
-      console.log(`⚠️ Migration file not found: ${file}`);
+      console.log(`Migration file not found: ${file}`);
     }
   }
 
   const seedPath = './src/models/seed.js';
   if (fs.existsSync(seedPath)) {
-    console.log('📦 Running seed.js...');
+    console.log('Running seed.js...');
     exec(`node ${seedPath}`, (error, stdout, stderr) => {
       if (error) {
-        console.log('⚠️ seed.js error:', error.message);
+        console.log('seed.js error:', error.message);
       } else {
         if (stdout) console.log(stdout);
         if (stderr) console.error(stderr);
-        console.log('✅ seed.js completed');
+        console.log('seed.js completed');
       }
     });
   }
@@ -205,7 +205,7 @@ app.get('/api/init-db', async (req, res) => {
 // ERROR HANDLING
 // ============================================
 app.use((err, req, res, next) => {
-  console.error('❌ Server error:', err);
+  console.error('Server error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -236,7 +236,7 @@ const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0';
 
 server.listen(PORT, HOST, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔥 CORS: ALLOWING SELECTED ORIGINS`);
-  console.log(`📁 Uploads served from: ${path.join(__dirname, '../uploads')}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log('CORS: ALLOWING SELECTED ORIGINS');
+  console.log(`Uploads served from: ${path.join(__dirname, '../uploads')}`);
 });
