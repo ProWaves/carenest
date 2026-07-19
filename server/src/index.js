@@ -8,7 +8,7 @@ const app = express();
 const server = http.createServer(app);
 
 // ============================================
-// 🔥🔥🔥 ULTIMATE CORS FIX - FIRST MIDDLEWARE
+// ULTIMATE CORS FIX - FIRST MIDDLEWARE
 // ============================================
 app.use((req, res, next) => {
   const origin = req.headers.origin || '*';
@@ -123,6 +123,8 @@ const db = require('./config/database');
 // ============================================
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ============================================
@@ -166,8 +168,8 @@ app.get('/api/skills', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     database: process.env.DATABASE_URL ? 'connected' : 'not configured',
@@ -236,4 +238,5 @@ const HOST = '0.0.0.0';
 server.listen(PORT, HOST, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔥 CORS: ALLOWING SELECTED ORIGINS`);
+  console.log(`📁 Uploads served from: ${path.join(__dirname, '../uploads')}`);
 });
