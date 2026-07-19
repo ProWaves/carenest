@@ -1,10 +1,19 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "npm install && npm run build",
   "outputDirectory": "dist",
-  "rewrites": [
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://valiant-abundance-production-e47f.up.railway.app/api/:path*"
+      "handle": "filesystem"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "https://valiant-abundance-production-e47f.up.railway.app/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
