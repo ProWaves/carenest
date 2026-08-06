@@ -249,4 +249,4 @@ const seed = async () => {
   }
 };
 
-seed();
+//seed();
