@@ -22,15 +22,6 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../dist',
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          axios: ['axios'],
-          socket: ['socket.io-client'],
-        },
-      },
-    },
+    outDir: '../dist',  // Output to root/dist
   },
 });
