@@ -493,4 +493,46 @@ router.get('/parent-reviews', authenticate, async (req, res) => {
   }
 });
 
+// DELETE /api/bookings/:id - Delete a cancelled booking
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get the booking
+    const booking = await db.query('SELECT * FROM bookings WHERE id = $1', [id]);
+    if (booking.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found.' });
+    }
+
+    const b = booking.rows[0];
+
+    // Only allow deletion of cancelled bookings
+    if (b.status !== 'cancelled') {
+      return res.status(400).json({ 
+        error: 'Only cancelled bookings can be deleted.' 
+      });
+    }
+
+    // Check permission
+    const isParent = b.parent_id === req.user.id;
+    const isBabysitter = b.babysitter_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isParent && !isBabysitter && !isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized.' });
+    }
+
+    // Delete the booking
+    await db.query('DELETE FROM bookings WHERE id = $1', [id]);
+
+    res.json({ 
+      message: 'Booking deleted successfully.', 
+      id: parseInt(id) 
+    });
+  } catch (error) {
+    console.error('❌ Delete booking error:', error);
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
 module.exports = router;
