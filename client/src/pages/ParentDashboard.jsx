@@ -70,7 +70,7 @@ function ParentDashboard() {
   };
 
   // ============================================
-  // NEW FUNCTIONS FOR BOOKING ACTIONS
+  // BOOKING ACTION FUNCTIONS - PARENT
   // ============================================
 
   // Handle Delete Booking
@@ -232,7 +232,7 @@ function ParentDashboard() {
       </div>
 
       {/* ============================================
-          BOOKINGS TAB WITH NEW ACTIONS
+          BOOKINGS TAB - PARENT (Delete, Message, Book Again)
           ============================================ */}
       {activeTab === 'bookings' && (
         <div className="dash-content">
@@ -264,7 +264,7 @@ function ParentDashboard() {
                     <span className={`booking-status ${statusClass(b.status)}`}>{t(`booking.${b.status}`)}</span>
                   </div>
                   
-                  {/* Action Buttons */}
+                  {/* PARENT ACTION BUTTONS */}
                   <div className="booking-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                     
                     {/* Pending bookings - Cancel only */}

@@ -1,4 +1,3 @@
-// client/src/pages/BabysitterDashboard.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -175,6 +174,21 @@ function BabysitterDashboard() {
         completedCount: completed.length, 
         statusBreakdown: breakdown 
       });
+    }
+  };
+
+  // ============================================
+  // DELETE BOOKING FOR BABYSITTER
+  // ============================================
+  const deleteBooking = async (id) => {
+    if (!window.confirm('Are you sure you want to permanently delete this booking? This action cannot be undone.')) return;
+    
+    try {
+      await API.delete(`/bookings/${id}`);
+      setBookings(bookings.filter((b) => b.id !== id));
+      addToast('Booking deleted successfully!', 'success');
+    } catch (err) {
+      addToast(err.response?.data?.error || 'Error deleting booking', 'error');
     }
   };
 
@@ -618,7 +632,7 @@ function BabysitterDashboard() {
   };
 
   // ============================================
-  // RENDER BOOKINGS TAB
+  // RENDER BOOKINGS TAB - BABYSITTER (Only Delete for completed/cancelled)
   // ============================================
   const renderBookingsTab = () => (
     <div className="dash-content">
@@ -653,7 +667,11 @@ function BabysitterDashboard() {
                   </div>
                 )}
               </div>
+              
+              {/* BABYSITTER ACTION BUTTONS - Only Delete for completed/cancelled */}
               <div className="booking-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+                
+                {/* Pending bookings - Confirm or Cancel */}
                 {b.status === 'pending' && (
                   <>
                     <button 
@@ -673,6 +691,8 @@ function BabysitterDashboard() {
                     </button>
                   </>
                 )}
+                
+                {/* Confirmed bookings - Start or Cancel */}
                 {b.status === 'confirmed' && (
                   <>
                     <button 
@@ -692,6 +712,8 @@ function BabysitterDashboard() {
                     </button>
                   </>
                 )}
+                
+                {/* In Progress bookings - Complete or Cancel */}
                 {b.status === 'in_progress' && (
                   <>
                     <button 
@@ -711,6 +733,8 @@ function BabysitterDashboard() {
                     </button>
                   </>
                 )}
+                
+                {/* Completed bookings - Review, Delete, Report */}
                 {b.status === 'completed' && (
                   <>
                     <button 
@@ -723,6 +747,13 @@ function BabysitterDashboard() {
                       ⭐ Review Parent
                     </button>
                     <button
+                      onClick={() => deleteBooking(b.id)}
+                      className="btn btn-sm btn-outline-danger"
+                      title="Permanently delete this booking"
+                    >
+                      🗑️ Delete
+                    </button>
+                    <button
                       onClick={() => {
                         setSelectedBookingForReport(b);
                         setShowReportModal(true);
@@ -733,16 +764,27 @@ function BabysitterDashboard() {
                     </button>
                   </>
                 )}
+                
+                {/* Cancelled bookings - Delete, Report */}
                 {b.status === 'cancelled' && (
-                  <button
-                    onClick={() => {
-                      setSelectedBookingForReport(b);
-                      setShowReportModal(true);
-                    }}
-                    className="btn btn-sm btn-outline-danger"
-                  >
-                    🚨 Report Parent
-                  </button>
+                  <>
+                    <button
+                      onClick={() => deleteBooking(b.id)}
+                      className="btn btn-sm btn-outline-danger"
+                      title="Permanently delete this booking"
+                    >
+                      🗑️ Delete
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedBookingForReport(b);
+                        setShowReportModal(true);
+                      }}
+                      className="btn btn-sm btn-outline-danger"
+                    >
+                      🚨 Report Parent
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -1340,7 +1382,7 @@ function BabysitterDashboard() {
   );
 
   // ============================================
-  // RENDER LOCATION TAB (NEW)
+  // RENDER LOCATION TAB
   // ============================================
   const renderLocationTab = () => (
     <div className="dash-content">
@@ -1512,7 +1554,7 @@ function BabysitterDashboard() {
     { id: 'availability', label: '📆 Availability' },
     { id: 'saved-slots', label: '📋 Saved Slots' },
     { id: 'documents', label: '📄 Documents' },
-    { id: 'location', label: '📍 Location' },  // <-- NEW TAB
+    { id: 'location', label: '📍 Location' },
     { id: 'emergency', label: '🚨 Emergency' },
     { id: 'gallery', label: '🖼️ Gallery' },
     { id: 'earnings', label: '💰 Earnings' },
@@ -1546,7 +1588,7 @@ function BabysitterDashboard() {
       {activeTab === 'availability' && renderAvailabilityTab()}
       {activeTab === 'saved-slots' && renderSavedSlotsTab()}
       {activeTab === 'documents' && renderDocumentsTab()}
-      {activeTab === 'location' && renderLocationTab()}  {/* <-- NEW TAB RENDER */}
+      {activeTab === 'location' && renderLocationTab()}
       {activeTab === 'emergency' && renderEmergencyTab()}
       {activeTab === 'gallery' && renderGalleryTab()}
       {activeTab === 'earnings' && renderEarningsTab()}

@@ -1,4 +1,3 @@
-// server/src/routes/bookings.js
 const express = require('express');
 const db = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
@@ -491,7 +490,8 @@ router.get('/parent-reviews', authenticate, async (req, res) => {
 });
 
 // ============================================
-// NEW: DELETE /api/bookings/:id - Delete booking (only if cancelled or completed)
+// DELETE /api/bookings/:id - Delete booking (only if cancelled or completed)
+// Works for both parents and babysitters
 // ============================================
 router.delete('/:id', authenticate, async (req, res) => {
   try {
@@ -505,8 +505,8 @@ router.delete('/:id', authenticate, async (req, res) => {
 
     const b = booking.rows[0];
 
-    // Check if user is authorized (only parent who owns the booking)
-    if (b.parent_id !== req.user.id) {
+    // Check if user is authorized (parent OR babysitter who owns the booking)
+    if (b.parent_id !== req.user.id && b.babysitter_id !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized. You can only delete your own bookings.' });
     }
 
