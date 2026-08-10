@@ -6,7 +6,6 @@
     "build": "cd client && npm install && npm run build",
     "dev": "cd client && npm run dev",
     "start": "cd server && npm start"
-    
   },
   "engines": {
     "node": ">=18.0.0"
