@@ -181,13 +181,16 @@ function BabysitterDashboard() {
   // DELETE BOOKING FOR BABYSITTER
   // ============================================
   const deleteBooking = async (id) => {
+    console.log(`🗑️ Attempting to delete booking #${id}`);
     if (!window.confirm('Are you sure you want to permanently delete this booking? This action cannot be undone.')) return;
     
     try {
-      await API.delete(`/bookings/${id}`);
+      const response = await API.delete(`/bookings/${id}`);
+      console.log('✅ Delete response:', response.data);
       setBookings(bookings.filter((b) => b.id !== id));
       addToast('Booking deleted successfully!', 'success');
     } catch (err) {
+      console.error('❌ Delete error:', err);
       addToast(err.response?.data?.error || 'Error deleting booking', 'error');
     }
   };
@@ -632,7 +635,7 @@ function BabysitterDashboard() {
   };
 
   // ============================================
-  // RENDER BOOKINGS TAB - BABYSITTER (Only Delete for completed/cancelled)
+  // RENDER BOOKINGS TAB - BABYSITTER (FIXED)
   // ============================================
   const renderBookingsTab = () => (
     <div className="dash-content">
@@ -643,32 +646,37 @@ function BabysitterDashboard() {
       ) : (
         <div className="booking-list">
           {bookings.map((b) => {
-            const isCompleted = b.status === 'completed';
-            const isCancelled = b.status === 'cancelled';
-            const isPending = b.status === 'pending';
-            const isConfirmed = b.status === 'confirmed';
-            const isInProgress = b.status === 'in_progress';
+            // Normalize status to lowercase for consistent checking
+            const status = (b.status || '').toLowerCase();
+            const isCompleted = status === 'completed';
+            const isCancelled = status === 'cancelled' || status === 'canceled';
+            const isPending = status === 'pending';
+            const isConfirmed = status === 'confirmed';
+            const isInProgress = status === 'in_progress' || status === 'inprogress';
+            
+            // Debug log to see what statuses are coming from the database
+            console.log(`📋 Booking #${b.id} status: "${b.status}" -> normalized: "${status}"`);
             
             return (
               <div key={b.id} className="booking-item">
                 <div className="booking-main">
                   <div className="booking-person">
-                    <div className="avatar-sm">{b.parent_first_name?.[0]}</div>
+                    <div className="avatar-sm">{b.parent_first_name?.[0] || '?'}</div>
                     <div>
-                      <strong>{b.parent_first_name} {b.parent_last_name}</strong>
-                      <span className="booking-child">{b.child_name}</span>
+                      <strong>{b.parent_first_name || 'Unknown'} {b.parent_last_name || ''}</strong>
+                      <span className="booking-child">{b.child_name || 'No child'}</span>
                     </div>
                   </div>
                   <div className="booking-dates">
-                    <span>{new Date(b.start_date).toLocaleDateString()} {b.start_time?.slice(0, 5)}</span>
+                    <span>{b.start_date ? new Date(b.start_date).toLocaleDateString() : 'N/A'} {b.start_time?.slice(0, 5) || ''}</span>
                     <span>→</span>
-                    <span>{new Date(b.end_date).toLocaleDateString()} {b.end_time?.slice(0, 5)}</span>
+                    <span>{b.end_date ? new Date(b.end_date).toLocaleDateString() : 'N/A'} {b.end_time?.slice(0, 5) || ''}</span>
                   </div>
                   <div className="booking-amount">
-                    ${parseFloat(b.total_amount || 0).toFixed(2)}
+                    ${b.total_amount ? parseFloat(b.total_amount).toFixed(2) : '0.00'}
                   </div>
                   <span className={`booking-status ${statusClass(b.status)}`}>
-                    {b.status}
+                    {b.status || 'Unknown'}
                   </span>
                   {b.cancellation_reason && (
                     <div className="cancellation-reason">
@@ -743,7 +751,7 @@ function BabysitterDashboard() {
                     </>
                   )}
                   
-                  {/* Completed bookings - Review, Delete, Report */}
+                  {/* COMPLETED bookings - Review, DELETE, Report */}
                   {isCompleted && (
                     <>
                       <button 
@@ -774,7 +782,7 @@ function BabysitterDashboard() {
                     </>
                   )}
                   
-                  {/* Cancelled bookings - Delete, Report */}
+                  {/* CANCELLED bookings - DELETE, Report */}
                   {isCancelled && (
                     <>
                       <button
@@ -794,6 +802,20 @@ function BabysitterDashboard() {
                         🚨 Report Parent
                       </button>
                     </>
+                  )}
+                  
+                  {/* Fallback: If status is something else, show a debug message */}
+                  {!isPending && !isConfirmed && !isInProgress && !isCompleted && !isCancelled && (
+                    <span style={{ fontSize: '0.7rem', color: '#ff6b6b' }}>
+                      ⚠️ Unknown status: "{b.status}" 
+                      <button 
+                        onClick={() => console.log('Booking data:', b)}
+                        className="btn btn-sm btn-outline"
+                        style={{ marginLeft: '4px' }}
+                      >
+                        Debug
+                      </button>
+                    </span>
                   )}
                 </div>
               </div>

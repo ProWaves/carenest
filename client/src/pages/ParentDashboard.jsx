@@ -82,6 +82,7 @@ function ParentDashboard() {
       setBookings(bookings.filter((b) => b.id !== id));
       addToast('Booking deleted successfully!', 'success');
     } catch (err) {
+      console.error('Delete error:', err);
       addToast(err.response?.data?.error || 'Error deleting booking', 'error');
     }
   };
@@ -246,32 +247,35 @@ function ParentDashboard() {
           ) : (
             <div className="booking-list">
               {bookings.map((b) => {
-                const isCompleted = b.status === 'completed';
-                const isCancelled = b.status === 'cancelled';
-                const isPending = b.status === 'pending';
-                const isConfirmed = b.status === 'confirmed';
-                const isInProgress = b.status === 'in_progress';
+                // Normalize status to lowercase for consistent checking
+                const status = (b.status || '').toLowerCase();
+                const isCompleted = status === 'completed';
+                const isCancelled = status === 'cancelled' || status === 'canceled';
+                const isPending = status === 'pending';
+                
+                // Debug log to see what statuses are coming from the database
+                console.log(`📋 Parent Booking #${b.id} status: "${b.status}" -> normalized: "${status}"`);
                 
                 return (
                   <div key={b.id} className="booking-item">
                     <div className="booking-main">
                       <div className="booking-person">
-                        <div className="avatar-sm">{b.babysitter_first_name?.[0]}</div>
+                        <div className="avatar-sm">{b.babysitter_first_name?.[0] || '?'}</div>
                         <div>
-                          <strong>{b.babysitter_first_name} {b.babysitter_last_name}</strong>
+                          <strong>{b.babysitter_first_name || 'Unknown'} {b.babysitter_last_name || ''}</strong>
                           {b.child_name && <span className="booking-child">with {b.child_name}</span>}
                         </div>
                       </div>
                       <div className="booking-dates">
-                        <span>{new Date(b.start_date).toLocaleDateString()} {b.start_time?.slice(0, 5)}</span>
+                        <span>{b.start_date ? new Date(b.start_date).toLocaleDateString() : 'N/A'} {b.start_time?.slice(0, 5) || ''}</span>
                         <span>&rarr;</span>
-                        <span>{new Date(b.end_date).toLocaleDateString()} {b.end_time?.slice(0, 5)}</span>
+                        <span>{b.end_date ? new Date(b.end_date).toLocaleDateString() : 'N/A'} {b.end_time?.slice(0, 5) || ''}</span>
                       </div>
                       <div className="booking-amount">
-                        ${parseFloat(b.total_amount || 0).toFixed(2)}
+                        ${b.total_amount ? parseFloat(b.total_amount).toFixed(2) : '0.00'}
                       </div>
                       <span className={`booking-status ${statusClass(b.status)}`}>
-                        {t(`booking.${b.status}`)}
+                        {t(`booking.${b.status}`) || b.status || 'Unknown'}
                       </span>
                     </div>
                     
@@ -285,7 +289,7 @@ function ParentDashboard() {
                         </button>
                       )}
                       
-                      {/* Completed bookings - Delete, Message, Book Again, Review, Report */}
+                      {/* COMPLETED bookings - Delete, Message, Book Again, Review, Report */}
                       {isCompleted && (
                         <>
                           <button
@@ -330,7 +334,7 @@ function ParentDashboard() {
                         </>
                       )}
                       
-                      {/* Cancelled bookings - Delete, Message, Book Again, Report */}
+                      {/* CANCELLED bookings - Delete, Message, Book Again, Report */}
                       {isCancelled && (
                         <>
                           <button
@@ -364,6 +368,13 @@ function ParentDashboard() {
                             🚨 Report
                           </button>
                         </>
+                      )}
+                      
+                      {/* Fallback: If status is something else, show a debug message */}
+                      {!isPending && !isCompleted && !isCancelled && (
+                        <span style={{ fontSize: '0.7rem', color: '#ff6b6b' }}>
+                          ⚠️ Unknown status: "{b.status}"
+                        </span>
                       )}
                     </div>
                   </div>
