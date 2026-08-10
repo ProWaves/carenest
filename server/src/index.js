@@ -11,7 +11,7 @@ const server = http.createServer(app);
 // ULTIMATE CORS FIX - FIRST MIDDLEWARE
 // ============================================
 app.use((req, res, next) => {
-  const origin = req.headers.origin || '*';
+  const origin = req.headers.origin;
   
   // List of allowed origins
   const allowedOrigins = [
@@ -21,6 +21,7 @@ app.use((req, res, next) => {
     'https://carenest.vercel.app',
     'https://carenest-rzmg.vercel.app',
     'https://carenest-9l1g5cxk3-prowaves-projects-6643b984.vercel.app',
+    'https://carenest-61nn1gxz8-prowaves-projects-6643b984.vercel.app',
     'http://localhost:8081',
     'http://localhost:5000',
     'http://localhost:5173',
@@ -32,18 +33,32 @@ app.use((req, res, next) => {
   ];
 
   // Check if origin is allowed
-  const allowedOrigin = allowedOrigins.includes(origin) ? origin : '*';
+  let allowedOrigin = '*';
   
-  // Set CORS headers - IMPORTANT: Cannot use '*' when credentials are true
-  if (allowedOrigin !== '*') {
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+  if (origin) {
+    // Check if origin is in the allowed list
+    const isAllowed = allowedOrigins.some(allowed => {
+      // Handle wildcard patterns
+      if (allowed.includes('*')) {
+        const pattern = allowed.replace(/\*/g, '.*');
+        return new RegExp(pattern).test(origin);
+      }
+      return allowed === origin;
+    });
+    
+    // Also allow any vercel.app domain (for preview deployments)
+    const isVercel = origin.includes('vercel.app');
+    
+    if (isAllowed || isVercel) {
+      allowedOrigin = origin;
+    }
   }
-  
+
+  // Set CORS headers - Use the actual origin, not '*'
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Accept-Language');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Max-Age', '86400');
   
   console.log('🔥 CORS:', req.method, req.url, 'from', origin, '->', allowedOrigin);
@@ -246,7 +261,35 @@ app.use((req, res) => {
 // ============================================
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps)
+      if (!origin) return callback(null, true);
+      
+      // Allow all vercel.app domains
+      if (origin.includes('vercel.app')) {
+        return callback(null, true);
+      }
+      
+      // Allow localhost for development
+      if (origin.includes('localhost')) {
+        return callback(null, true);
+      }
+      
+      // Allow specific domains
+      const allowedOrigins = [
+        'https://sitterspot-backend.onrender.com',
+        'https://carenest.vercel.app',
+        'https://carenest-rzmg-seven.vercel.app',
+        'https://carenest-red.vercel.app',
+        'https://carenest-rzmg.vercel.app',
+      ];
+      
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     credentials: true,
   },
