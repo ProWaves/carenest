@@ -14,7 +14,10 @@ import axios from 'axios';
 // In development: uses Vite proxy (/api)
 // In production: uses the full backend URL from environment variables
 // ============================================
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.PROD 
+    ? 'https://sitterspot-backend.onrender.com/api' 
+    : '/api');
 
 // Create axios instance with default config
 const API = axios.create({

@@ -5,7 +5,7 @@
   "scripts": {
     "build": "cd client && npm install && npm run build",
     "dev": "cd client && npm run dev",
-    "start": "cd server && npm start",
+    "start": "cd server && npm start"
     
   },
   "engines": {
