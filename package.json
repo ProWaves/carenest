@@ -6,7 +6,7 @@
     "build": "cd client && npm install && npm run build",
     "dev": "cd client && npm run dev",
     "start": "cd server && npm start",
-    "vercel-build": "cd client && npm install && npm run build"
+    
   },
   "engines": {
     "node": ">=18.0.0"
