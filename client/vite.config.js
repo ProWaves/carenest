@@ -22,6 +22,6 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../dist',  // Output to root/dist
+    outDir: 'dist',  // This will output to client/dist
   },
 });
