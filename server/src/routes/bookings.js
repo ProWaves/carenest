@@ -185,10 +185,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
   }
 });
 
-// ============================================
 // PUT /api/bookings/:id/cancel - Cancel booking and FREE SLOTS
-// Babysitter AND Parent can cancel
-// ============================================
 router.put('/:id/cancel', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
@@ -489,6 +486,73 @@ router.get('/parent-reviews', authenticate, async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Get parent reviews error:', error);
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+// ============================================
+// NEW: DELETE /api/bookings/:id - Delete booking (only if cancelled or completed)
+// ============================================
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get the booking
+    const booking = await db.query('SELECT * FROM bookings WHERE id = $1', [id]);
+    if (booking.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found.' });
+    }
+
+    const b = booking.rows[0];
+
+    // Check if user is authorized (only parent who owns the booking)
+    if (b.parent_id !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized. You can only delete your own bookings.' });
+    }
+
+    // Only allow deletion of cancelled or completed bookings
+    if (b.status !== 'cancelled' && b.status !== 'completed') {
+      return res.status(400).json({ 
+        error: 'Only cancelled or completed bookings can be deleted.' 
+      });
+    }
+
+    // Begin transaction to also free any slots if needed
+    const client = await db.pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      // Free any slots booked by this booking (if any)
+      await client.query(
+        `UPDATE babysitter_availability 
+         SET is_booked = false, 
+             booked_booking_id = NULL,
+             booked_at = NULL
+         WHERE booked_booking_id = $1`,
+        [id]
+      );
+
+      // Delete the booking
+      await client.query('DELETE FROM bookings WHERE id = $1', [id]);
+
+      await client.query('COMMIT');
+
+      console.log(`🗑️ Booking #${id} deleted by user ${req.user.id}`);
+      console.log(`✅ Freed any slots associated with booking #${id}`);
+
+      res.json({ 
+        message: 'Booking deleted successfully.',
+        bookingId: id
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('❌ Delete booking error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });

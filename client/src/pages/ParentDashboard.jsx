@@ -1,6 +1,5 @@
-// client/src/pages/ParentDashboard.jsx
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -14,6 +13,7 @@ function ParentDashboard() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { addToast } = useToast();
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState([]);
   const [children, setChildren] = useState([]);
   const [favorites, setFavorites] = useState([]);
@@ -29,26 +29,76 @@ function ParentDashboard() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedBookingForReport, setSelectedBookingForReport] = useState(null);
 
+  // Load all data
   useEffect(() => {
-    API.get('/bookings').then((r) => setBookings(r.data)).catch(console.error);
-    API.get('/admin/children').then((r) => setChildren(r.data)).catch(console.error);
-    API.get('/parent/favorites').then((r) => setFavorites(r.data)).catch(console.error);
+    loadAllData();
   }, []);
 
-  useEffect(() => {
-    if (bookings.length > 0) {
-      const completed = bookings.filter((b) => b.status === 'completed');
-      const total = completed.reduce((sum, b) => sum + parseFloat(b.total_amount || 0), 0);
-      const average = completed.length > 0 ? total / completed.length : 0;
-      const months = {};
-      const recent = [...bookings].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
-      completed.forEach((b) => {
-        const m = new Date(b.created_at).toLocaleString('default', { month: 'short', year: 'numeric' });
-        months[m] = (months[m] || 0) + parseFloat(b.total_amount || 0);
-      });
-      setSpending({ total, average, monthly: Object.entries(months), recent });
+  const loadAllData = async () => {
+    try {
+      const [bookingsRes, childrenRes, favoritesRes] = await Promise.all([
+        API.get('/bookings'),
+        API.get('/admin/children'),
+        API.get('/parent/favorites')
+      ]);
+      setBookings(bookingsRes.data);
+      setChildren(childrenRes.data);
+      setFavorites(favoritesRes.data);
+      
+      if (bookingsRes.data.length > 0) {
+        calculateSpending(bookingsRes.data);
+      }
+    } catch (error) {
+      console.error('Load data error:', error);
+      addToast('Failed to load some data', 'error');
     }
-  }, [bookings]);
+  };
+
+  const calculateSpending = (bookingsData) => {
+    const completed = bookingsData.filter((b) => b.status === 'completed');
+    const total = completed.reduce((sum, b) => sum + parseFloat(b.total_amount || 0), 0);
+    const average = completed.length > 0 ? total / completed.length : 0;
+    const months = {};
+    const recent = [...bookingsData].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
+    
+    completed.forEach((b) => {
+      const m = new Date(b.created_at).toLocaleString('default', { month: 'short', year: 'numeric' });
+      months[m] = (months[m] || 0) + parseFloat(b.total_amount || 0);
+    });
+    
+    setSpending({ total, average, monthly: Object.entries(months), recent });
+  };
+
+  // ============================================
+  // NEW FUNCTIONS FOR BOOKING ACTIONS
+  // ============================================
+
+  // Handle Delete Booking
+  const deleteBooking = async (id) => {
+    if (!window.confirm('Are you sure you want to permanently delete this booking? This action cannot be undone.')) return;
+    
+    try {
+      await API.delete(`/bookings/${id}`);
+      setBookings(bookings.filter((b) => b.id !== id));
+      addToast('Booking deleted successfully!', 'success');
+    } catch (err) {
+      addToast(err.response?.data?.error || 'Error deleting booking', 'error');
+    }
+  };
+
+  // Handle Message Babysitter - Navigate to chat
+  const messageBabysitter = (babysitterId) => {
+    navigate(`/messages/${babysitterId}`);
+  };
+
+  // Handle Book Again - Navigate to booking page with babysitter ID
+  const bookAgain = (babysitterId) => {
+    navigate(`/babysitters/${babysitterId}/book`);
+  };
+
+  // ============================================
+  // EXISTING FUNCTIONS
+  // ============================================
 
   const addChild = async (e) => {
     e.preventDefault();
@@ -107,7 +157,13 @@ function ParentDashboard() {
   };
 
   const statusClass = (s) => {
-    const map = { pending: 'status-pending', confirmed: 'status-confirmed', in_progress: 'status-progress', completed: 'status-completed', cancelled: 'status-cancelled' };
+    const map = { 
+      pending: 'status-pending', 
+      confirmed: 'status-confirmed', 
+      in_progress: 'status-progress', 
+      completed: 'status-completed', 
+      cancelled: 'status-cancelled' 
+    };
     return map[s] || '';
   };
 
@@ -175,7 +231,9 @@ function ParentDashboard() {
         </button>
       </div>
 
-      {/* Bookings Tab with Report Button */}
+      {/* ============================================
+          BOOKINGS TAB WITH NEW ACTIONS
+          ============================================ */}
       {activeTab === 'bookings' && (
         <div className="dash-content">
           {bookings.length === 0 ? (
@@ -208,14 +266,38 @@ function ParentDashboard() {
                   
                   {/* Action Buttons */}
                   <div className="booking-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                    
+                    {/* Pending bookings - Cancel only */}
                     {b.status === 'pending' && (
                       <button onClick={() => cancelBooking(b.id)} className="btn btn-sm btn-outline-danger">
                         {t('booking.cancelled')}
                       </button>
                     )}
                     
+                    {/* Completed bookings - Delete, Message, Book Again, Review, Report */}
                     {b.status === 'completed' && (
                       <>
+                        <button
+                          onClick={() => deleteBooking(b.id)}
+                          className="btn btn-sm btn-outline-danger"
+                          title="Permanently delete this booking"
+                        >
+                          🗑️ Delete
+                        </button>
+                        <button
+                          onClick={() => messageBabysitter(b.babysitter_id)}
+                          className="btn btn-sm btn-outline"
+                          title="Message the babysitter"
+                        >
+                          💬 Message
+                        </button>
+                        <button
+                          onClick={() => bookAgain(b.babysitter_id)}
+                          className="btn btn-sm btn-primary"
+                          title="Book this babysitter again"
+                        >
+                          📅 Book Again
+                        </button>
                         <button
                           onClick={() => {
                             setReviewModal({ open: true, booking: b });
@@ -237,16 +319,40 @@ function ParentDashboard() {
                       </>
                     )}
                     
+                    {/* Cancelled bookings - Delete, Message, Book Again, Report */}
                     {b.status === 'cancelled' && (
-                      <button
-                        onClick={() => {
-                          setSelectedBookingForReport(b);
-                          setShowReportModal(true);
-                        }}
-                        className="btn btn-sm btn-outline-danger"
-                      >
-                        🚨 Report
-                      </button>
+                      <>
+                        <button
+                          onClick={() => deleteBooking(b.id)}
+                          className="btn btn-sm btn-outline-danger"
+                          title="Permanently delete this booking"
+                        >
+                          🗑️ Delete
+                        </button>
+                        <button
+                          onClick={() => messageBabysitter(b.babysitter_id)}
+                          className="btn btn-sm btn-outline"
+                          title="Message the babysitter"
+                        >
+                          💬 Message
+                        </button>
+                        <button
+                          onClick={() => bookAgain(b.babysitter_id)}
+                          className="btn btn-sm btn-primary"
+                          title="Book this babysitter again"
+                        >
+                          📅 Book Again
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedBookingForReport(b);
+                            setShowReportModal(true);
+                          }}
+                          className="btn btn-sm btn-outline-danger"
+                        >
+                          🚨 Report
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -439,7 +545,7 @@ function ParentDashboard() {
           bookingId={selectedBookingForReport.id}
           reporterRole="parent"
           onSuccess={() => {
-            // Optional: refresh data or show additional message
+            addToast('Report submitted successfully!', 'success');
           }}
         />
       )}
