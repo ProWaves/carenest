@@ -245,118 +245,130 @@ function ParentDashboard() {
             </div>
           ) : (
             <div className="booking-list">
-              {bookings.map((b) => (
-                <div key={b.id} className="booking-item">
-                  <div className="booking-main">
-                    <div className="booking-person">
-                      <div className="avatar-sm">{b.babysitter_first_name?.[0]}</div>
-                      <div>
-                        <strong>{b.babysitter_first_name} {b.babysitter_last_name}</strong>
-                        {b.child_name && <span className="booking-child">with {b.child_name}</span>}
+              {bookings.map((b) => {
+                const isCompleted = b.status === 'completed';
+                const isCancelled = b.status === 'cancelled';
+                const isPending = b.status === 'pending';
+                const isConfirmed = b.status === 'confirmed';
+                const isInProgress = b.status === 'in_progress';
+                
+                return (
+                  <div key={b.id} className="booking-item">
+                    <div className="booking-main">
+                      <div className="booking-person">
+                        <div className="avatar-sm">{b.babysitter_first_name?.[0]}</div>
+                        <div>
+                          <strong>{b.babysitter_first_name} {b.babysitter_last_name}</strong>
+                          {b.child_name && <span className="booking-child">with {b.child_name}</span>}
+                        </div>
                       </div>
+                      <div className="booking-dates">
+                        <span>{new Date(b.start_date).toLocaleDateString()} {b.start_time?.slice(0, 5)}</span>
+                        <span>&rarr;</span>
+                        <span>{new Date(b.end_date).toLocaleDateString()} {b.end_time?.slice(0, 5)}</span>
+                      </div>
+                      <div className="booking-amount">
+                        ${parseFloat(b.total_amount || 0).toFixed(2)}
+                      </div>
+                      <span className={`booking-status ${statusClass(b.status)}`}>
+                        {t(`booking.${b.status}`)}
+                      </span>
                     </div>
-                    <div className="booking-dates">
-                      <span>{new Date(b.start_date).toLocaleDateString()} {b.start_time?.slice(0, 5)}</span>
-                      <span>&rarr;</span>
-                      <span>{new Date(b.end_date).toLocaleDateString()} {b.end_time?.slice(0, 5)}</span>
+                    
+                    {/* PARENT ACTION BUTTONS */}
+                    <div className="booking-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      
+                      {/* Pending bookings - Cancel only */}
+                      {isPending && (
+                        <button onClick={() => cancelBooking(b.id)} className="btn btn-sm btn-outline-danger">
+                          {t('booking.cancelled')}
+                        </button>
+                      )}
+                      
+                      {/* Completed bookings - Delete, Message, Book Again, Review, Report */}
+                      {isCompleted && (
+                        <>
+                          <button
+                            onClick={() => deleteBooking(b.id)}
+                            className="btn btn-sm btn-outline-danger"
+                            title="Permanently delete this booking"
+                          >
+                            🗑️ Delete
+                          </button>
+                          <button
+                            onClick={() => messageBabysitter(b.babysitter_id)}
+                            className="btn btn-sm btn-outline"
+                            title="Message the babysitter"
+                          >
+                            💬 Message
+                          </button>
+                          <button
+                            onClick={() => bookAgain(b.babysitter_id)}
+                            className="btn btn-sm btn-primary"
+                            title="Book this babysitter again"
+                          >
+                            📅 Book Again
+                          </button>
+                          <button
+                            onClick={() => {
+                              setReviewModal({ open: true, booking: b });
+                              setReviewData({ rating: 0, comment: '' });
+                            }}
+                            className="btn btn-sm btn-outline"
+                          >
+                            {String.fromCodePoint(11088)} {t('review.title')}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedBookingForReport(b);
+                              setShowReportModal(true);
+                            }}
+                            className="btn btn-sm btn-outline-danger"
+                          >
+                            🚨 Report
+                          </button>
+                        </>
+                      )}
+                      
+                      {/* Cancelled bookings - Delete, Message, Book Again, Report */}
+                      {isCancelled && (
+                        <>
+                          <button
+                            onClick={() => deleteBooking(b.id)}
+                            className="btn btn-sm btn-outline-danger"
+                            title="Permanently delete this booking"
+                          >
+                            🗑️ Delete
+                          </button>
+                          <button
+                            onClick={() => messageBabysitter(b.babysitter_id)}
+                            className="btn btn-sm btn-outline"
+                            title="Message the babysitter"
+                          >
+                            💬 Message
+                          </button>
+                          <button
+                            onClick={() => bookAgain(b.babysitter_id)}
+                            className="btn btn-sm btn-primary"
+                            title="Book this babysitter again"
+                          >
+                            📅 Book Again
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedBookingForReport(b);
+                              setShowReportModal(true);
+                            }}
+                            className="btn btn-sm btn-outline-danger"
+                          >
+                            🚨 Report
+                          </button>
+                        </>
+                      )}
                     </div>
-                    <div className="booking-amount">{parseFloat(b.total_amount || 0).toFixed(2)} {t('common.currency')}</div>
-                    <span className={`booking-status ${statusClass(b.status)}`}>{t(`booking.${b.status}`)}</span>
                   </div>
-                  
-                  {/* PARENT ACTION BUTTONS */}
-                  <div className="booking-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                    
-                    {/* Pending bookings - Cancel only */}
-                    {b.status === 'pending' && (
-                      <button onClick={() => cancelBooking(b.id)} className="btn btn-sm btn-outline-danger">
-                        {t('booking.cancelled')}
-                      </button>
-                    )}
-                    
-                    {/* Completed bookings - Delete, Message, Book Again, Review, Report */}
-                    {b.status === 'completed' && (
-                      <>
-                        <button
-                          onClick={() => deleteBooking(b.id)}
-                          className="btn btn-sm btn-outline-danger"
-                          title="Permanently delete this booking"
-                        >
-                          🗑️ Delete
-                        </button>
-                        <button
-                          onClick={() => messageBabysitter(b.babysitter_id)}
-                          className="btn btn-sm btn-outline"
-                          title="Message the babysitter"
-                        >
-                          💬 Message
-                        </button>
-                        <button
-                          onClick={() => bookAgain(b.babysitter_id)}
-                          className="btn btn-sm btn-primary"
-                          title="Book this babysitter again"
-                        >
-                          📅 Book Again
-                        </button>
-                        <button
-                          onClick={() => {
-                            setReviewModal({ open: true, booking: b });
-                            setReviewData({ rating: 0, comment: '' });
-                          }}
-                          className="btn btn-sm btn-outline"
-                        >
-                          {String.fromCodePoint(11088)} {t('review.title')}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedBookingForReport(b);
-                            setShowReportModal(true);
-                          }}
-                          className="btn btn-sm btn-outline-danger"
-                        >
-                          🚨 Report
-                        </button>
-                      </>
-                    )}
-                    
-                    {/* Cancelled bookings - Delete, Message, Book Again, Report */}
-                    {b.status === 'cancelled' && (
-                      <>
-                        <button
-                          onClick={() => deleteBooking(b.id)}
-                          className="btn btn-sm btn-outline-danger"
-                          title="Permanently delete this booking"
-                        >
-                          🗑️ Delete
-                        </button>
-                        <button
-                          onClick={() => messageBabysitter(b.babysitter_id)}
-                          className="btn btn-sm btn-outline"
-                          title="Message the babysitter"
-                        >
-                          💬 Message
-                        </button>
-                        <button
-                          onClick={() => bookAgain(b.babysitter_id)}
-                          className="btn btn-sm btn-primary"
-                          title="Book this babysitter again"
-                        >
-                          📅 Book Again
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedBookingForReport(b);
-                            setShowReportModal(true);
-                          }}
-                          className="btn btn-sm btn-outline-danger"
-                        >
-                          🚨 Report
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

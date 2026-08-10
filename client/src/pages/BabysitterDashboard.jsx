@@ -642,153 +642,163 @@ function BabysitterDashboard() {
         </div>
       ) : (
         <div className="booking-list">
-          {bookings.map((b) => (
-            <div key={b.id} className="booking-item">
-              <div className="booking-main">
-                <div className="booking-person">
-                  <div className="avatar-sm">{b.parent_first_name?.[0]}</div>
-                  <div>
-                    <strong>{b.parent_first_name} {b.parent_last_name}</strong>
-                    <span className="booking-child">{b.child_name}</span>
+          {bookings.map((b) => {
+            const isCompleted = b.status === 'completed';
+            const isCancelled = b.status === 'cancelled';
+            const isPending = b.status === 'pending';
+            const isConfirmed = b.status === 'confirmed';
+            const isInProgress = b.status === 'in_progress';
+            
+            return (
+              <div key={b.id} className="booking-item">
+                <div className="booking-main">
+                  <div className="booking-person">
+                    <div className="avatar-sm">{b.parent_first_name?.[0]}</div>
+                    <div>
+                      <strong>{b.parent_first_name} {b.parent_last_name}</strong>
+                      <span className="booking-child">{b.child_name}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="booking-dates">
-                  <span>{new Date(b.start_date).toLocaleDateString()} {b.start_time?.slice(0, 5)}</span>
-                  <span>→</span>
-                  <span>{new Date(b.end_date).toLocaleDateString()} {b.end_time?.slice(0, 5)}</span>
-                </div>
-                <div className="booking-amount">${parseFloat(b.total_amount || 0).toFixed(2)}</div>
-                <span className={`booking-status ${statusClass(b.status)}`}>
-                  {b.status}
-                </span>
-                {b.cancellation_reason && (
-                  <div className="cancellation-reason">
-                    Cancelled: {b.cancellation_reason}
+                  <div className="booking-dates">
+                    <span>{new Date(b.start_date).toLocaleDateString()} {b.start_time?.slice(0, 5)}</span>
+                    <span>→</span>
+                    <span>{new Date(b.end_date).toLocaleDateString()} {b.end_time?.slice(0, 5)}</span>
                   </div>
-                )}
+                  <div className="booking-amount">
+                    ${parseFloat(b.total_amount || 0).toFixed(2)}
+                  </div>
+                  <span className={`booking-status ${statusClass(b.status)}`}>
+                    {b.status}
+                  </span>
+                  {b.cancellation_reason && (
+                    <div className="cancellation-reason">
+                      Cancelled: {b.cancellation_reason}
+                    </div>
+                  )}
+                </div>
+                
+                {/* BABYSITTER ACTION BUTTONS */}
+                <div className="booking-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+                  
+                  {/* Pending bookings - Confirm or Cancel */}
+                  {isPending && (
+                    <>
+                      <button 
+                        onClick={() => handleBookingStatus(b.id, 'confirmed')} 
+                        className="btn btn-sm btn-primary"
+                      >
+                        ✅ Confirm
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setBookingToCancel(b.id);
+                          setShowCancelModal(true);
+                        }} 
+                        className="btn btn-sm btn-outline-danger"
+                      >
+                        ❌ Cancel
+                      </button>
+                    </>
+                  )}
+                  
+                  {/* Confirmed bookings - Start or Cancel */}
+                  {isConfirmed && (
+                    <>
+                      <button 
+                        onClick={() => handleBookingStatus(b.id, 'in_progress')} 
+                        className="btn btn-sm btn-primary"
+                      >
+                        🔄 Start
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setBookingToCancel(b.id);
+                          setShowCancelModal(true);
+                        }} 
+                        className="btn btn-sm btn-outline-danger"
+                      >
+                        ❌ Cancel
+                      </button>
+                    </>
+                  )}
+                  
+                  {/* In Progress bookings - Complete or Cancel */}
+                  {isInProgress && (
+                    <>
+                      <button 
+                        onClick={() => handleBookingStatus(b.id, 'completed')} 
+                        className="btn btn-sm btn-success"
+                      >
+                        ✅ Complete
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setBookingToCancel(b.id);
+                          setShowCancelModal(true);
+                        }} 
+                        className="btn btn-sm btn-outline-danger"
+                      >
+                        ❌ Cancel
+                      </button>
+                    </>
+                  )}
+                  
+                  {/* Completed bookings - Review, Delete, Report */}
+                  {isCompleted && (
+                    <>
+                      <button 
+                        onClick={() => {
+                          setBookingToReview(b.id);
+                          setShowReviewModal(true);
+                        }} 
+                        className="btn btn-sm btn-outline"
+                      >
+                        ⭐ Review Parent
+                      </button>
+                      <button
+                        onClick={() => deleteBooking(b.id)}
+                        className="btn btn-sm btn-outline-danger"
+                        title="Permanently delete this booking"
+                      >
+                        🗑️ Delete
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedBookingForReport(b);
+                          setShowReportModal(true);
+                        }}
+                        className="btn btn-sm btn-outline-danger"
+                      >
+                        🚨 Report Parent
+                      </button>
+                    </>
+                  )}
+                  
+                  {/* Cancelled bookings - Delete, Report */}
+                  {isCancelled && (
+                    <>
+                      <button
+                        onClick={() => deleteBooking(b.id)}
+                        className="btn btn-sm btn-outline-danger"
+                        title="Permanently delete this booking"
+                      >
+                        🗑️ Delete
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedBookingForReport(b);
+                          setShowReportModal(true);
+                        }}
+                        className="btn btn-sm btn-outline-danger"
+                      >
+                        🚨 Report Parent
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              
-              {/* BABYSITTER ACTION BUTTONS - Only Delete for completed/cancelled */}
-              <div className="booking-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
-                
-                {/* Pending bookings - Confirm or Cancel */}
-                {b.status === 'pending' && (
-                  <>
-                    <button 
-                      onClick={() => handleBookingStatus(b.id, 'confirmed')} 
-                      className="btn btn-sm btn-primary"
-                    >
-                      ✅ Confirm
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setBookingToCancel(b.id);
-                        setShowCancelModal(true);
-                      }} 
-                      className="btn btn-sm btn-outline-danger"
-                    >
-                      ❌ Cancel
-                    </button>
-                  </>
-                )}
-                
-                {/* Confirmed bookings - Start or Cancel */}
-                {b.status === 'confirmed' && (
-                  <>
-                    <button 
-                      onClick={() => handleBookingStatus(b.id, 'in_progress')} 
-                      className="btn btn-sm btn-primary"
-                    >
-                      🔄 Start
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setBookingToCancel(b.id);
-                        setShowCancelModal(true);
-                      }} 
-                      className="btn btn-sm btn-outline-danger"
-                    >
-                      ❌ Cancel
-                    </button>
-                  </>
-                )}
-                
-                {/* In Progress bookings - Complete or Cancel */}
-                {b.status === 'in_progress' && (
-                  <>
-                    <button 
-                      onClick={() => handleBookingStatus(b.id, 'completed')} 
-                      className="btn btn-sm btn-success"
-                    >
-                      ✅ Complete
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setBookingToCancel(b.id);
-                        setShowCancelModal(true);
-                      }} 
-                      className="btn btn-sm btn-outline-danger"
-                    >
-                      ❌ Cancel
-                    </button>
-                  </>
-                )}
-                
-                {/* Completed bookings - Review, Delete, Report */}
-                {b.status === 'completed' && (
-                  <>
-                    <button 
-                      onClick={() => {
-                        setBookingToReview(b.id);
-                        setShowReviewModal(true);
-                      }} 
-                      className="btn btn-sm btn-outline"
-                    >
-                      ⭐ Review Parent
-                    </button>
-                    <button
-                      onClick={() => deleteBooking(b.id)}
-                      className="btn btn-sm btn-outline-danger"
-                      title="Permanently delete this booking"
-                    >
-                      🗑️ Delete
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedBookingForReport(b);
-                        setShowReportModal(true);
-                      }}
-                      className="btn btn-sm btn-outline-danger"
-                    >
-                      🚨 Report Parent
-                    </button>
-                  </>
-                )}
-                
-                {/* Cancelled bookings - Delete, Report */}
-                {b.status === 'cancelled' && (
-                  <>
-                    <button
-                      onClick={() => deleteBooking(b.id)}
-                      className="btn btn-sm btn-outline-danger"
-                      title="Permanently delete this booking"
-                    >
-                      🗑️ Delete
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedBookingForReport(b);
-                        setShowReportModal(true);
-                      }}
-                      className="btn btn-sm btn-outline-danger"
-                    >
-                      🚨 Report Parent
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -85,7 +85,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 
     // Check if babysitter is suspended
     const sitterCheck = await db.query(
-      `SELECT u.suspended_at, bp.status 
+      `SELECT u.suspended_at, bp.status, bp.hourly_rate
        FROM users u 
        JOIN babysitter_profiles bp ON bp.user_id = u.id 
        WHERE u.id = $1`,
@@ -102,16 +102,15 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
     }
 
     // Get hourly rate
-    const profile = await db.query(
-      'SELECT hourly_rate FROM babysitter_profiles WHERE user_id = $1',
-      [babysitter_id]
-    );
+    const hourlyRate = parseFloat(sitterCheck.rows[0].hourly_rate) || 15;
 
     // Calculate total
     const startDateTime = new Date(`${start_date}T${start_time}`);
     const endDateTime = new Date(`${end_date}T${end_time}`);
-    const totalHours = Math.max(0, (endDateTime - startDateTime) / (1000 * 60 * 60));
-    const totalAmount = totalHours * parseFloat(profile.rows[0].hourly_rate);
+    const totalHours = Math.max(1, (endDateTime - startDateTime) / (1000 * 60 * 60));
+    const totalAmount = totalHours * hourlyRate;
+
+    console.log(`💰 Booking calculation: ${totalHours}h × $${hourlyRate} = $${totalAmount}`);
 
     // Begin transaction
     const client = await db.pool.connect();
@@ -131,23 +130,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 
       // If slot_ids provided, mark them as booked
       if (slot_ids && Array.isArray(slot_ids) && slot_ids.length > 0) {
-        // Verify all slots belong to this babysitter and are available
-        const slotCheck = await client.query(
-          `SELECT id FROM babysitter_availability 
-           WHERE id = ANY($1::int[]) 
-           AND babysitter_id = (SELECT id FROM babysitter_profiles WHERE user_id = $2)
-           AND is_booked = false
-           AND is_published = true`,
-          [slot_ids, babysitter_id]
-        );
-
-        if (slotCheck.rows.length !== slot_ids.length) {
-          await client.query('ROLLBACK');
-          return res.status(400).json({ 
-            error: 'One or more selected slots are no longer available. Please refresh and try again.' 
-          });
-        }
-
         for (const slotId of slot_ids) {
           await client.query(
             `UPDATE babysitter_availability 
