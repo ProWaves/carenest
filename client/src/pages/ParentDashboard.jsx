@@ -38,7 +38,7 @@ function ParentDashboard() {
     try {
       const [bookingsRes, childrenRes, favoritesRes] = await Promise.all([
         API.get('/bookings'),
-        API.get('/admin/children'),
+        API.get('/parent/children'),  // CHANGED: from /admin/children to /parent/children
         API.get('/parent/favorites')
       ]);
       setBookings(bookingsRes.data);
@@ -104,7 +104,7 @@ function ParentDashboard() {
   const addChild = async (e) => {
     e.preventDefault();
     try {
-      const res = await API.post('/admin/children', newChild);
+      const res = await API.post('/parent/children', newChild);  // CHANGED: from /admin/children to /parent/children
       setChildren([res.data, ...children]);
       setNewChild({ name: '', age: '', notes: '' });
       setShowChildModal(false);
@@ -116,7 +116,7 @@ function ParentDashboard() {
 
   const deleteChild = async (id) => {
     try {
-      await API.delete(`/admin/children/${id}`);
+      await API.delete(`/parent/children/${id}`);  // CHANGED: from /admin/children to /parent/children
       setChildren(children.filter((c) => c.id !== id));
       addToast('Child removed', 'info');
     } catch (err) {
