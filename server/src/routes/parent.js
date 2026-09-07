@@ -11,7 +11,7 @@ router.use(authenticate);
 // CHILDREN MANAGEMENT
 // ============================================
 
-// GET /api/admin/children — Get current parent's children
+// GET /api/parent/children — Get current parent's children
 router.get('/children', async (req, res) => {
   try {
     const result = await db.query(
@@ -25,7 +25,7 @@ router.get('/children', async (req, res) => {
   }
 });
 
-// POST /api/admin/children — Add a child
+// POST /api/parent/children — Add a child
 router.post('/children', async (req, res) => {
   try {
     const { name, age, notes } = req.body;
@@ -43,7 +43,7 @@ router.post('/children', async (req, res) => {
   }
 });
 
-// DELETE /api/admin/children/:id — Remove a child
+// DELETE /api/parent/children/:id — Remove a child
 router.delete('/children/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -65,7 +65,7 @@ router.delete('/children/:id', async (req, res) => {
 // FAVORITES MANAGEMENT
 // ============================================
 
-// GET /api/admin/favorites — Get current parent's favorite babysitters
+// GET /api/parent/favorites — Get current parent's favorite babysitters
 router.get('/favorites', async (req, res) => {
   try {
     const result = await db.query(
@@ -87,7 +87,7 @@ router.get('/favorites', async (req, res) => {
   }
 });
 
-// POST /api/admin/favorites — Add a babysitter to favorites
+// POST /api/parent/favorites — Add a babysitter to favorites
 router.post('/favorites', async (req, res) => {
   try {
     const { babysitter_id } = req.body;
@@ -113,7 +113,7 @@ router.post('/favorites', async (req, res) => {
   }
 });
 
-// DELETE /api/admin/favorites/:babysitter_id — Remove a babysitter from favorites
+// DELETE /api/parent/favorites/:babysitterId — Remove a babysitter from favorites
 router.delete('/favorites/:babysitterId', async (req, res) => {
   try {
     const { babysitterId } = req.params;
