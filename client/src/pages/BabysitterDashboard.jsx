@@ -7,6 +7,7 @@ import PhoneInput from '../components/PhoneInput';
 import BackButton from '../components/BackButton';
 import ReportModal from '../components/ReportModal';
 import BabysitterLocation from '../components/BabysitterLocation';
+import Rating from '../components/Rating';
 
 function BabysitterDashboard() {
   const { user } = useAuth();
@@ -40,6 +41,7 @@ function BabysitterDashboard() {
     completedCount: 0, 
     statusBreakdown: {} 
   });
+  const [receivedReviews, setReceivedReviews] = useState([]);
 
   // Publish state
   const [publishing, setPublishing] = useState(false);
@@ -115,6 +117,16 @@ function BabysitterDashboard() {
         setBookings([]);
       }
 
+      // Load received reviews
+      try {
+        const reviewsRes = await API.get('/reviews/received');
+        console.log('✅ Received reviews loaded:', reviewsRes.data.length);
+        setReceivedReviews(reviewsRes.data);
+      } catch (reviewsError) {
+        console.error('❌ Reviews load error:', reviewsError);
+        setReceivedReviews([]);
+      }
+
       // Load slots
       try {
         await loadSlots();
@@ -181,16 +193,13 @@ function BabysitterDashboard() {
   // DELETE BOOKING FOR BABYSITTER
   // ============================================
   const deleteBooking = async (id) => {
-    console.log(`🗑️ Attempting to delete booking #${id}`);
     if (!window.confirm('Are you sure you want to permanently delete this booking? This action cannot be undone.')) return;
     
     try {
-      const response = await API.delete(`/bookings/${id}`);
-      console.log('✅ Delete response:', response.data);
+      await API.delete(`/bookings/${id}`);
       setBookings(bookings.filter((b) => b.id !== id));
       addToast('Booking deleted successfully!', 'success');
     } catch (err) {
-      console.error('❌ Delete error:', err);
       addToast(err.response?.data?.error || 'Error deleting booking', 'error');
     }
   };
@@ -635,7 +644,7 @@ function BabysitterDashboard() {
   };
 
   // ============================================
-  // RENDER BOOKINGS TAB - BABYSITTER (FIXED)
+  // RENDER BOOKINGS TAB
   // ============================================
   const renderBookingsTab = () => (
     <div className="dash-content">
@@ -646,16 +655,12 @@ function BabysitterDashboard() {
       ) : (
         <div className="booking-list">
           {bookings.map((b) => {
-            // Normalize status to lowercase for consistent checking
             const status = (b.status || '').toLowerCase();
             const isCompleted = status === 'completed';
             const isCancelled = status === 'cancelled' || status === 'canceled';
             const isPending = status === 'pending';
             const isConfirmed = status === 'confirmed';
             const isInProgress = status === 'in_progress' || status === 'inprogress';
-            
-            // Debug log to see what statuses are coming from the database
-            console.log(`📋 Booking #${b.id} status: "${b.status}" -> normalized: "${status}"`);
             
             return (
               <div key={b.id} className="booking-item">
@@ -685,142 +690,134 @@ function BabysitterDashboard() {
                   )}
                 </div>
                 
-                {/* BABYSITTER ACTION BUTTONS */}
                 <div className="booking-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
-                  
-                  {/* Pending bookings - Confirm or Cancel */}
                   {isPending && (
                     <>
-                      <button 
-                        onClick={() => handleBookingStatus(b.id, 'confirmed')} 
-                        className="btn btn-sm btn-primary"
-                      >
+                      <button onClick={() => handleBookingStatus(b.id, 'confirmed')} className="btn btn-sm btn-primary">
                         ✅ Confirm
                       </button>
-                      <button 
-                        onClick={() => {
-                          setBookingToCancel(b.id);
-                          setShowCancelModal(true);
-                        }} 
-                        className="btn btn-sm btn-outline-danger"
-                      >
+                      <button onClick={() => { setBookingToCancel(b.id); setShowCancelModal(true); }} className="btn btn-sm btn-outline-danger">
                         ❌ Cancel
                       </button>
                     </>
                   )}
                   
-                  {/* Confirmed bookings - Start or Cancel */}
                   {isConfirmed && (
                     <>
-                      <button 
-                        onClick={() => handleBookingStatus(b.id, 'in_progress')} 
-                        className="btn btn-sm btn-primary"
-                      >
+                      <button onClick={() => handleBookingStatus(b.id, 'in_progress')} className="btn btn-sm btn-primary">
                         🔄 Start
                       </button>
-                      <button 
-                        onClick={() => {
-                          setBookingToCancel(b.id);
-                          setShowCancelModal(true);
-                        }} 
-                        className="btn btn-sm btn-outline-danger"
-                      >
+                      <button onClick={() => { setBookingToCancel(b.id); setShowCancelModal(true); }} className="btn btn-sm btn-outline-danger">
                         ❌ Cancel
                       </button>
                     </>
                   )}
                   
-                  {/* In Progress bookings - Complete or Cancel */}
                   {isInProgress && (
                     <>
-                      <button 
-                        onClick={() => handleBookingStatus(b.id, 'completed')} 
-                        className="btn btn-sm btn-success"
-                      >
+                      <button onClick={() => handleBookingStatus(b.id, 'completed')} className="btn btn-sm btn-success">
                         ✅ Complete
                       </button>
-                      <button 
-                        onClick={() => {
-                          setBookingToCancel(b.id);
-                          setShowCancelModal(true);
-                        }} 
-                        className="btn btn-sm btn-outline-danger"
-                      >
+                      <button onClick={() => { setBookingToCancel(b.id); setShowCancelModal(true); }} className="btn btn-sm btn-outline-danger">
                         ❌ Cancel
                       </button>
                     </>
                   )}
                   
-                  {/* COMPLETED bookings - Review, DELETE, Report */}
                   {isCompleted && (
                     <>
-                      <button 
-                        onClick={() => {
-                          setBookingToReview(b.id);
-                          setShowReviewModal(true);
-                        }} 
-                        className="btn btn-sm btn-outline"
-                      >
+                      <button onClick={() => { setBookingToReview(b.id); setShowReviewModal(true); }} className="btn btn-sm btn-outline">
                         ⭐ Review Parent
                       </button>
-                      <button
-                        onClick={() => deleteBooking(b.id)}
-                        className="btn btn-sm btn-outline-danger"
-                        title="Permanently delete this booking"
-                      >
+                      <button onClick={() => deleteBooking(b.id)} className="btn btn-sm btn-outline-danger" title="Permanently delete this booking">
                         🗑️ Delete
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedBookingForReport(b);
-                          setShowReportModal(true);
-                        }}
-                        className="btn btn-sm btn-outline-danger"
-                      >
+                      <button onClick={() => { setSelectedBookingForReport(b); setShowReportModal(true); }} className="btn btn-sm btn-outline-danger">
                         🚨 Report Parent
                       </button>
                     </>
                   )}
                   
-                  {/* CANCELLED bookings - DELETE, Report */}
                   {isCancelled && (
                     <>
-                      <button
-                        onClick={() => deleteBooking(b.id)}
-                        className="btn btn-sm btn-outline-danger"
-                        title="Permanently delete this booking"
-                      >
+                      <button onClick={() => deleteBooking(b.id)} className="btn btn-sm btn-outline-danger" title="Permanently delete this booking">
                         🗑️ Delete
                       </button>
-                      <button
-                        onClick={() => {
-                          setSelectedBookingForReport(b);
-                          setShowReportModal(true);
-                        }}
-                        className="btn btn-sm btn-outline-danger"
-                      >
+                      <button onClick={() => { setSelectedBookingForReport(b); setShowReportModal(true); }} className="btn btn-sm btn-outline-danger">
                         🚨 Report Parent
                       </button>
                     </>
-                  )}
-                  
-                  {/* Fallback: If status is something else, show a debug message */}
-                  {!isPending && !isConfirmed && !isInProgress && !isCompleted && !isCancelled && (
-                    <span style={{ fontSize: '0.7rem', color: '#ff6b6b' }}>
-                      ⚠️ Unknown status: "{b.status}" 
-                      <button 
-                        onClick={() => console.log('Booking data:', b)}
-                        className="btn btn-sm btn-outline"
-                        style={{ marginLeft: '4px' }}
-                      >
-                        Debug
-                      </button>
-                    </span>
                   )}
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+
+  // ============================================
+  // RENDER REVIEWS TAB (NEW)
+  // ============================================
+  const renderReviewsTab = () => (
+    <div className="dash-content">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+        <h3 style={{ margin: 0 }}>⭐ Reviews I Received</h3>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+          {receivedReviews.length} review{receivedReviews.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {receivedReviews.length === 0 ? (
+        <div className="no-results">
+          <div style={{ fontSize: '3rem', marginBottom: '16px' }}>⭐</div>
+          <p>No reviews yet.</p>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Complete bookings to receive reviews from parents.
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {receivedReviews.map((review) => (
+            <div key={review.id} style={{
+              padding: '18px 20px',
+              borderRadius: 'var(--radius)',
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border-light)',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    color: 'white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: '700', fontSize: '0.85rem',
+                  }}>
+                    {review.first_name?.[0] || '?'}{review.last_name?.[0] || ''}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: '600', fontSize: '0.92rem' }}>
+                      {review.first_name || 'Anonymous'} {review.last_name || ''}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {new Date(review.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric', month: 'short', day: 'numeric'
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <Rating value={review.rating} />
+              </div>
+              {review.comment && (
+                <p style={{ margin: '8px 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6, fontStyle: 'italic' }}>
+                  "{review.comment}"
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -911,14 +908,7 @@ function BabysitterDashboard() {
           </div>
         )}
 
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginBottom: '16px',
-          flexWrap: 'wrap',
-          gap: '12px'
-        }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h4 style={{ margin: 0 }}>📆 Your Weekly Availability</h4>
             {profile?.status === 'approved' && !profile?.suspended_at && (
@@ -932,12 +922,7 @@ function BabysitterDashboard() {
               onClick={publishAvailability}
               disabled={publishing || availability.filter(a => a.is_available).length === 0}
               className="btn btn-primary"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 24px',
-              }}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px' }}
             >
               {publishing ? (
                 <>
@@ -961,84 +946,28 @@ function BabysitterDashboard() {
             const isActive = !!slot && slot.is_available !== false;
             
             return (
-              <div 
-                key={i} 
-                className={`avail-day ${isActive ? 'active' : ''}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  padding: '10px 16px',
-                  borderRadius: 'var(--radius)',
-                  background: isActive ? 'rgba(79, 70, 229, 0.08)' : 'var(--color-surface)',
-                  border: isActive ? '1px solid rgba(79, 70, 229, 0.25)' : '1px solid var(--color-border-light)',
-                  transition: 'all var(--transition)',
-                  marginBottom: '4px',
-                  flexWrap: 'wrap',
-                }}
-              >
-                <label style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '10px', 
-                  fontWeight: 500, 
-                  minWidth: '120px', 
-                  cursor: 'pointer',
-                  fontSize: '0.88rem' 
-                }}>
-                  <input 
-                    type="checkbox" 
-                    checked={isActive} 
-                    onChange={() => toggleDay(i)} 
-                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-500)' }}
-                  />
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: '16px',
+                padding: '10px 16px', borderRadius: 'var(--radius)',
+                background: isActive ? 'rgba(79, 70, 229, 0.08)' : 'var(--color-surface)',
+                border: isActive ? '1px solid rgba(79, 70, 229, 0.25)' : '1px solid var(--color-border-light)',
+                marginBottom: '4px', flexWrap: 'wrap',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 500, minWidth: '120px', cursor: 'pointer', fontSize: '0.88rem' }}>
+                  <input type="checkbox" checked={isActive} onChange={() => toggleDay(i)} style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-500)' }} />
                   {day}
                 </label>
                 
                 {isActive && (
                   <>
-                    <div className="avail-times" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <input 
-                        type="time" 
-                        value={slot?.start_time || '09:00'} 
-                        onChange={(e) => updateSlot(i, 'start_time', e.target.value)} 
-                        style={{ 
-                          padding: '6px 10px', 
-                          border: '1px solid var(--color-border)', 
-                          borderRadius: 'var(--radius-sm)', 
-                          fontSize: '0.85rem', 
-                          background: 'var(--color-surface)', 
-                          color: 'var(--color-text)', 
-                          outline: 'none' 
-                        }}
-                      />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <input type="time" value={slot?.start_time || '09:00'} onChange={(e) => updateSlot(i, 'start_time', e.target.value)} style={{ padding: '6px 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', background: 'var(--color-surface)', color: 'var(--color-text)', outline: 'none' }} />
                       <span style={{ color: 'var(--color-text-secondary)' }}>to</span>
-                      <input 
-                        type="time" 
-                        value={slot?.end_time || '17:00'} 
-                        onChange={(e) => updateSlot(i, 'end_time', e.target.value)} 
-                        style={{ 
-                          padding: '6px 10px', 
-                          border: '1px solid var(--color-border)', 
-                          borderRadius: 'var(--radius-sm)', 
-                          fontSize: '0.85rem', 
-                          background: 'var(--color-surface)', 
-                          color: 'var(--color-text)', 
-                          outline: 'none' 
-                        }}
-                      />
+                      <input type="time" value={slot?.end_time || '17:00'} onChange={(e) => updateSlot(i, 'end_time', e.target.value)} style={{ padding: '6px 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', background: 'var(--color-surface)', color: 'var(--color-text)', outline: 'none' }} />
                     </div>
                     
                     {profile?.status === 'approved' && !profile?.suspended_at && slot?.is_published && (
-                      <span style={{ 
-                        fontSize: '0.7rem', 
-                        color: '#10b981',
-                        fontWeight: '600',
-                        marginLeft: '8px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}>
+                      <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: '600', marginLeft: '8px' }}>
                         ✅ Published
                       </span>
                     )}
@@ -1049,20 +978,8 @@ function BabysitterDashboard() {
           })}
         </div>
         
-        <button 
-          onClick={saveAvailability} 
-          className="btn btn-primary" 
-          style={{ marginTop: 8 }}
-          disabled={savingAvailability}
-        >
-          {savingAvailability ? (
-            <>
-              <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2, marginRight: '8px' }} />
-              Saving...
-            </>
-          ) : (
-            '💾 Save Availability'
-          )}
+        <button onClick={saveAvailability} className="btn btn-primary" style={{ marginTop: 8 }} disabled={savingAvailability}>
+          {savingAvailability ? 'Saving...' : '💾 Save Availability'}
         </button>
 
         {publishStatus && (
@@ -1070,25 +987,6 @@ function BabysitterDashboard() {
             {publishStatus.message}
           </div>
         )}
-
-        <div style={{ 
-          marginTop: '16px', 
-          padding: '12px 16px', 
-          background: 'var(--color-bg-alt)', 
-          borderRadius: 'var(--radius)',
-          border: '1px solid var(--color-border-light)',
-          fontSize: '0.85rem',
-          color: 'var(--color-text-secondary)'
-        }}>
-          <p style={{ margin: 0 }}>
-            💡 <strong>How it works:</strong> 
-            {' '}Check the days you're available, set your preferred times, then click <strong>"Save Availability"</strong>.
-            {' '}Once saved, click <strong>"Publish All"</strong> or publish individual slots in the <strong>"Saved Slots"</strong> tab.
-          </p>
-          <p style={{ margin: '4px 0 0', fontSize: '0.8rem' }}>
-            📌 Your availability will appear in search results and booking requests once published.
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -1098,14 +996,7 @@ function BabysitterDashboard() {
   // ============================================
   const renderSavedSlotsTab = () => (
     <div className="dash-content">
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: '16px',
-        flexWrap: 'wrap',
-        gap: '12px'
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <h3 style={{ margin: 0 }}>📋 Saved Availability Slots</h3>
         <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
           {slots.filter(s => s.is_published).length} published · {slots.filter(s => s.is_booked).length} booked
@@ -1115,7 +1006,6 @@ function BabysitterDashboard() {
       {slots.length === 0 ? (
         <div className="no-results">
           <p>No availability slots saved yet.</p>
-          <p style={{ fontSize: '0.85rem' }}>Go to the Availability tab to add your schedule.</p>
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -1136,22 +1026,10 @@ function BabysitterDashboard() {
                 const isPublished = slot.is_published;
                 
                 return (
-                  <tr key={slot.id} style={{
-                    background: isBooked ? 'rgba(239, 68, 68, 0.05)' : 
-                               isPublished ? 'rgba(16, 185, 129, 0.05)' : 'transparent'
-                  }}>
+                  <tr key={slot.id} style={{ background: isBooked ? 'rgba(239, 68, 68, 0.05)' : isPublished ? 'rgba(16, 185, 129, 0.05)' : 'transparent' }}>
                     <td>
                       <strong>{dayName}</strong>
-                      {isBooked && (
-                        <span style={{ 
-                          display: 'block', 
-                          fontSize: '0.7rem', 
-                          color: '#ef4444',
-                          fontWeight: '600'
-                        }}>
-                          🔒 Booked by {slot.booked_by_first_name || 'a parent'}
-                        </span>
-                      )}
+                      {isBooked && <span style={{ display: 'block', fontSize: '0.7rem', color: '#ef4444', fontWeight: '600' }}>🔒 Booked</span>}
                     </td>
                     <td>{slot.start_time?.slice(0, 5) || '--'}</td>
                     <td>{slot.end_time?.slice(0, 5) || '--'}</td>
@@ -1169,41 +1047,15 @@ function BabysitterDashboard() {
                         {!isBooked ? (
                           <>
                             {!isPublished ? (
-                              <button
-                                onClick={() => handlePublishSlot(slot.id)}
-                                className="btn btn-sm btn-success"
-                                title="Publish this slot"
-                              >
-                                📢 Publish
-                              </button>
+                              <button onClick={() => handlePublishSlot(slot.id)} className="btn btn-sm btn-success">📢 Publish</button>
                             ) : (
-                              <button
-                                onClick={() => handleUnpublishSlot(slot.id)}
-                                className="btn btn-sm btn-outline"
-                                title="Unpublish this slot"
-                              >
-                                📥 Unpublish
-                              </button>
+                              <button onClick={() => handleUnpublishSlot(slot.id)} className="btn btn-sm btn-outline">📥 Unpublish</button>
                             )}
-                            <button
-                              onClick={() => handleEditSlot(slot.id)}
-                              className="btn btn-sm btn-outline"
-                              title="Edit this slot"
-                            >
-                              ✏️ Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSlot(slot.id)}
-                              className="btn btn-sm btn-outline-danger"
-                              title="Delete this slot"
-                            >
-                              🗑️
-                            </button>
+                            <button onClick={() => handleEditSlot(slot.id)} className="btn btn-sm btn-outline">✏️ Edit</button>
+                            <button onClick={() => handleDeleteSlot(slot.id)} className="btn btn-sm btn-outline-danger">🗑️</button>
                           </>
                         ) : (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            ⚠️ Booked - Cannot modify
-                          </span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>⚠️ Booked - Cannot modify</span>
                         )}
                       </div>
                     </td>
@@ -1215,7 +1067,6 @@ function BabysitterDashboard() {
         </div>
       )}
 
-      {/* Edit Modal */}
       {showEditModal && editingSlot && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
@@ -1224,25 +1075,15 @@ function BabysitterDashboard() {
               <button className="modal-close" onClick={() => setShowEditModal(false)}>×</button>
             </div>
             <div className="modal-body">
-              <p style={{ marginBottom: '16px' }}>
-                Editing <strong>{dayNames[editingSlot.day_of_week]}</strong>
-              </p>
+              <p style={{ marginBottom: '16px' }}>Editing <strong>{dayNames[editingSlot.day_of_week]}</strong></p>
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div className="form-group" style={{ flex: 1 }}>
                   <label>Start Time</label>
-                  <input
-                    type="time"
-                    value={editSlotData.start_time}
-                    onChange={(e) => setEditSlotData({ ...editSlotData, start_time: e.target.value })}
-                  />
+                  <input type="time" value={editSlotData.start_time} onChange={(e) => setEditSlotData({ ...editSlotData, start_time: e.target.value })} />
                 </div>
                 <div className="form-group" style={{ flex: 1 }}>
                   <label>End Time</label>
-                  <input
-                    type="time"
-                    value={editSlotData.end_time}
-                    onChange={(e) => setEditSlotData({ ...editSlotData, end_time: e.target.value })}
-                  />
+                  <input type="time" value={editSlotData.end_time} onChange={(e) => setEditSlotData({ ...editSlotData, end_time: e.target.value })} />
                 </div>
               </div>
             </div>
@@ -1283,133 +1124,51 @@ function BabysitterDashboard() {
       {documents.length === 0 ? (
         <div className="no-results" style={{ padding: '40px 20px' }}>
           <p>No documents uploaded yet.</p>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Upload your documents to get verified as a babysitter.
-          </p>
         </div>
       ) : (
         <div className="documents-list">
           {documents.map((doc) => (
-            <div 
-              key={doc.id} 
-              className="document-item" 
-              style={{
-                borderLeft: doc.is_verified ? '4px solid #10b981' : 
-                           doc.rejection_reason ? '4px solid #ef4444' : 
-                           '4px solid #f59e0b',
-                padding: '12px 18px',
-                background: 'var(--color-surface)',
-                borderRadius: 'var(--radius)',
-                boxShadow: 'var(--shadow-xs)',
-                border: '1px solid var(--color-border-light)',
-                transition: 'all var(--transition)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '12px'
-              }}
-            >
+            <div key={doc.id} className="document-item" style={{
+              borderLeft: doc.is_verified ? '4px solid #10b981' : doc.rejection_reason ? '4px solid #ef4444' : '4px solid #f59e0b',
+              padding: '12px 18px',
+              background: 'var(--color-surface)',
+              borderRadius: 'var(--radius)',
+              border: '1px solid var(--color-border-light)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px'
+            }}>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <strong style={{ fontSize: '0.95rem' }}>{getDocumentTypeLabel(doc.document_type)}</strong>
+                  <strong>{getDocumentTypeLabel(doc.document_type)}</strong>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                     Uploaded: {new Date(doc.uploaded_at).toLocaleDateString()}
                   </span>
                 </div>
                 {doc.rejection_reason && (
-                  <div style={{ 
-                    fontSize: '0.8rem', 
-                    color: '#ef4444', 
-                    marginTop: '4px',
-                    padding: '4px 10px',
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    borderRadius: '4px'
-                  }}>
-                    📝 Revision Needed: {doc.rejection_reason}
-                  </div>
-                )}
-                {doc.admin_notes && (
-                  <div style={{ 
-                    fontSize: '0.8rem', 
-                    color: 'var(--text-muted)', 
-                    marginTop: '2px' 
-                  }}>
-                    Admin Note: {doc.admin_notes}
+                  <div style={{ fontSize: '0.8rem', color: '#ef4444', marginTop: '4px', padding: '4px 10px', background: 'rgba(239, 68, 68, 0.08)', borderRadius: '4px' }}>
+                    📝 Revision: {doc.rejection_reason}
                   </div>
                 )}
               </div>
-              <div className="doc-status">
+              <div>
                 {doc.is_verified ? (
                   <span className="badge badge-success">✅ Verified</span>
                 ) : doc.rejection_reason ? (
-                  <span className="badge badge-danger">🔄 Revision Needed</span>
+                  <span className="badge badge-danger">🔄 Revision</span>
                 ) : (
                   <span className="badge badge-warning">⏳ Pending</span>
                 )}
               </div>
-              <div className="doc-actions" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                 {doc.rejection_reason && (
-                  <button 
-                    className="btn btn-sm btn-primary"
-                    onClick={() => updateDocument(doc.id)}
-                  >
-                    🔄 Resubmit
-                  </button>
+                  <button className="btn btn-sm btn-primary" onClick={() => updateDocument(doc.id)}>🔄 Resubmit</button>
                 )}
-                <button 
-                  className="btn btn-sm btn-outline"
-                  onClick={() => window.open(doc.document_url, '_blank')}
-                >
-                  👁️ View
-                </button>
-                <button 
-                  className="btn btn-sm btn-outline-danger"
-                  onClick={() => deleteDocument(doc.id)}
-                >
-                  🗑️ Delete
-                </button>
+                <button className="btn btn-sm btn-outline" onClick={() => window.open(doc.document_url, '_blank')}>👁️ View</button>
+                <button className="btn btn-sm btn-outline-danger" onClick={() => deleteDocument(doc.id)}>🗑️ Delete</button>
               </div>
             </div>
           ))}
         </div>
       )}
-
-      {documents.some(d => d.rejection_reason) && (
-        <div className="alert alert-info" style={{ marginTop: '16px' }}>
-          <strong>📝 Revision Needed:</strong> Please update the documents marked with "Revision Needed" 
-          and resubmit them for review.
-        </div>
-      )}
-
-      {/* Document Status Summary */}
-      <div style={{ 
-        marginTop: '16px', 
-        padding: '12px 16px', 
-        background: 'var(--bg-alt)', 
-        borderRadius: 'var(--radius)',
-        border: '1px solid var(--border-light)',
-        display: 'flex',
-        gap: '24px',
-        flexWrap: 'wrap'
-      }}>
-        <div>
-          <span style={{ fontWeight: '600' }}>Total: </span>
-          <span>{documents.length}</span>
-        </div>
-        <div>
-          <span style={{ fontWeight: '600', color: '#10b981' }}>Verified: </span>
-          <span>{documents.filter(d => d.is_verified).length}</span>
-        </div>
-        <div>
-          <span style={{ fontWeight: '600', color: '#f59e0b' }}>Pending: </span>
-          <span>{documents.filter(d => !d.is_verified && !d.rejection_reason).length}</span>
-        </div>
-        <div>
-          <span style={{ fontWeight: '600', color: '#ef4444' }}>Revision: </span>
-          <span>{documents.filter(d => d.rejection_reason).length}</span>
-        </div>
-      </div>
     </div>
   );
 
@@ -1430,19 +1189,11 @@ function BabysitterDashboard() {
       <form onSubmit={saveEmergency} className="emergency-form">
         <div className="form-group">
           <label>Emergency Contact Name</label>
-          <input
-            type="text"
-            value={emergency.emergency_contact_name}
-            onChange={(e) => setEmergency({ ...emergency, emergency_contact_name: e.target.value })}
-            placeholder="e.g., John Doe"
-          />
+          <input type="text" value={emergency.emergency_contact_name} onChange={(e) => setEmergency({ ...emergency, emergency_contact_name: e.target.value })} placeholder="e.g., John Doe" />
         </div>
         <div className="form-group">
           <label>Emergency Contact Phone</label>
-          <PhoneInput
-            value={emergency.emergency_contact_phone}
-            onChange={(val) => setEmergency({ ...emergency, emergency_contact_phone: val })}
-          />
+          <PhoneInput value={emergency.emergency_contact_phone} onChange={(val) => setEmergency({ ...emergency, emergency_contact_phone: val })} />
         </div>
         <button type="submit" className="btn btn-primary">Save Emergency Contact</button>
       </form>
@@ -1470,46 +1221,13 @@ function BabysitterDashboard() {
       <div className="image-gallery">
         {gallery.map((img) => (
           <div key={img.id} style={{ position: 'relative', display: 'inline-block' }}>
-            <img
-              src={img.image_url}
-              alt={img.caption || ''}
-              className={`gallery-image ${img.is_primary ? 'primary' : ''}`}
-            />
+            <img src={img.image_url} alt={img.caption || ''} className={`gallery-image ${img.is_primary ? 'primary' : ''}`} />
             <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 4 }}>
               {!img.is_primary && (
-                <button
-                  onClick={() => setPrimaryImage(img.id)}
-                  className="btn btn-sm btn-outline"
-                  title="Set as primary"
-                  style={{ padding: '2px 6px', fontSize: '0.7rem', background: 'var(--surface)' }}
-                >
-                  ⭐
-                </button>
+                <button onClick={() => setPrimaryImage(img.id)} className="btn btn-sm btn-outline" title="Set as primary" style={{ padding: '2px 6px', fontSize: '0.7rem', background: 'var(--surface)' }}>⭐</button>
               )}
-              <button
-                onClick={() => deleteGalleryImage(img.id)}
-                className="btn btn-sm btn-outline-danger"
-                title="Delete"
-                style={{ padding: '2px 6px', fontSize: '0.7rem', background: 'var(--surface)' }}
-              >
-                🗑️
-              </button>
+              <button onClick={() => deleteGalleryImage(img.id)} className="btn btn-sm btn-outline-danger" title="Delete" style={{ padding: '2px 6px', fontSize: '0.7rem', background: 'var(--surface)' }}>🗑️</button>
             </div>
-            {img.status === 'pending' && (
-              <div style={{ 
-                position: 'absolute', 
-                bottom: 4, 
-                left: 4, 
-                background: 'var(--warning)', 
-                color: 'white',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                fontSize: '10px',
-                fontWeight: '600'
-              }}>
-                Pending Approval
-              </div>
-            )}
           </div>
         ))}
         {gallery.length === 0 && <p className="no-results">No images uploaded yet.</p>}
@@ -1582,6 +1300,7 @@ function BabysitterDashboard() {
 
   const tabs = [
     { id: 'bookings', label: '📅 Bookings' },
+    { id: 'reviews', label: '⭐ Reviews' },
     { id: 'profile', label: '👤 Profile' },
     { id: 'availability', label: '📆 Availability' },
     { id: 'saved-slots', label: '📋 Saved Slots' },
@@ -1616,6 +1335,7 @@ function BabysitterDashboard() {
       </div>
 
       {activeTab === 'bookings' && renderBookingsTab()}
+      {activeTab === 'reviews' && renderReviewsTab()}
       {activeTab === 'profile' && renderProfileTab()}
       {activeTab === 'availability' && renderAvailabilityTab()}
       {activeTab === 'saved-slots' && renderSavedSlotsTab()}
@@ -1636,13 +1356,7 @@ function BabysitterDashboard() {
             <div className="modal-body">
               <div className="form-group">
                 <label>Cancellation Reason <span style={{ color: '#ef4444' }}>*</span></label>
-                <textarea
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="Please explain why you're cancelling this booking..."
-                  rows={4}
-                  required
-                />
+                <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Please explain why you're cancelling this booking..." rows={4} required />
               </div>
             </div>
             <div className="modal-footer">
@@ -1666,24 +1380,13 @@ function BabysitterDashboard() {
                 <label>Rating</label>
                 <div className="rating-select">
                   {[1, 2, 3, 4, 5].map((r) => (
-                    <button
-                      key={r}
-                      className={`rating-star ${r <= reviewData.rating ? 'active' : ''}`}
-                      onClick={() => setReviewData({ ...reviewData, rating: r })}
-                    >
-                      ⭐
-                    </button>
+                    <button key={r} className={`rating-star ${r <= reviewData.rating ? 'active' : ''}`} onClick={() => setReviewData({ ...reviewData, rating: r })}>⭐</button>
                   ))}
                 </div>
               </div>
               <div className="form-group">
                 <label>Comment</label>
-                <textarea
-                  value={reviewData.comment}
-                  onChange={(e) => setReviewData({ ...reviewData, comment: e.target.value })}
-                  placeholder="Share your experience with this parent..."
-                  rows={4}
-                />
+                <textarea value={reviewData.comment} onChange={(e) => setReviewData({ ...reviewData, comment: e.target.value })} placeholder="Share your experience..." rows={4} />
               </div>
             </div>
             <div className="modal-footer">
@@ -1698,18 +1401,13 @@ function BabysitterDashboard() {
       {selectedBookingForReport && (
         <ReportModal
           isOpen={showReportModal}
-          onClose={() => {
-            setShowReportModal(false);
-            setSelectedBookingForReport(null);
-          }}
+          onClose={() => { setShowReportModal(false); setSelectedBookingForReport(null); }}
           reportedUserId={selectedBookingForReport.parent_id}
           reportedName={`${selectedBookingForReport.parent_first_name || ''} ${selectedBookingForReport.parent_last_name || ''}`}
           reportedRole="parent"
           bookingId={selectedBookingForReport.id}
           reporterRole="babysitter"
-          onSuccess={() => {
-            addToast('Report submitted successfully! Admin will review it.', 'success');
-          }}
+          onSuccess={() => { addToast('Report submitted successfully!', 'success'); }}
         />
       )}
     </div>

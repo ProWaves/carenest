@@ -17,6 +17,7 @@ function ParentDashboard() {
   const [bookings, setBookings] = useState([]);
   const [children, setChildren] = useState([]);
   const [favorites, setFavorites] = useState([]);
+  const [receivedReviews, setReceivedReviews] = useState([]);
   const [activeTab, setActiveTab] = useState('bookings');
   const [showChildModal, setShowChildModal] = useState(false);
   const [newChild, setNewChild] = useState({ name: '', age: '', notes: '' });
@@ -36,14 +37,16 @@ function ParentDashboard() {
 
   const loadAllData = async () => {
     try {
-      const [bookingsRes, childrenRes, favoritesRes] = await Promise.all([
+      const [bookingsRes, childrenRes, favoritesRes, reviewsRes] = await Promise.all([
         API.get('/bookings'),
-        API.get('/parent/children'),  // CHANGED: from /admin/children to /parent/children
-        API.get('/parent/favorites')
+        API.get('/parent/children'),
+        API.get('/parent/favorites'),
+        API.get('/reviews/received')
       ]);
       setBookings(bookingsRes.data);
       setChildren(childrenRes.data);
       setFavorites(favoritesRes.data);
+      setReceivedReviews(reviewsRes.data);
       
       if (bookingsRes.data.length > 0) {
         calculateSpending(bookingsRes.data);
@@ -73,7 +76,6 @@ function ParentDashboard() {
   // BOOKING ACTION FUNCTIONS - PARENT
   // ============================================
 
-  // Handle Delete Booking
   const deleteBooking = async (id) => {
     if (!window.confirm('Are you sure you want to permanently delete this booking? This action cannot be undone.')) return;
     
@@ -87,12 +89,10 @@ function ParentDashboard() {
     }
   };
 
-  // Handle Message Babysitter - Navigate to chat
   const messageBabysitter = (babysitterId) => {
     navigate(`/messages/${babysitterId}`);
   };
 
-  // Handle Book Again - Navigate to booking page with babysitter ID
   const bookAgain = (babysitterId) => {
     navigate(`/babysitters/${babysitterId}/book`);
   };
@@ -104,7 +104,7 @@ function ParentDashboard() {
   const addChild = async (e) => {
     e.preventDefault();
     try {
-      const res = await API.post('/parent/children', newChild);  // CHANGED: from /admin/children to /parent/children
+      const res = await API.post('/parent/children', newChild);
       setChildren([res.data, ...children]);
       setNewChild({ name: '', age: '', notes: '' });
       setShowChildModal(false);
@@ -116,7 +116,7 @@ function ParentDashboard() {
 
   const deleteChild = async (id) => {
     try {
-      await API.delete(`/parent/children/${id}`);  // CHANGED: from /admin/children to /parent/children
+      await API.delete(`/parent/children/${id}`);
       setChildren(children.filter((c) => c.id !== id));
       addToast('Child removed', 'info');
     } catch (err) {
@@ -187,31 +187,10 @@ function ParentDashboard() {
 
       {/* AI Chatbot Panel */}
       {showAIChat && (
-        <div style={{
-          marginBottom: '24px',
-          background: 'var(--bg-card)',
-          borderRadius: '12px',
-          border: '1px solid var(--border-color)',
-          overflow: 'hidden',
-        }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '12px 20px',
-            background: 'var(--bg-secondary)',
-            borderBottom: '1px solid var(--border-color)',
-          }}>
-            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              🤖 AI Assistant
-            </h3>
-            <button
-              onClick={() => setShowAIChat(false)}
-              className="btn btn-sm btn-ghost"
-              style={{ padding: '4px 8px' }}
-            >
-              ✕ Close
-            </button>
+        <div style={{ marginBottom: '24px', background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>🤖 AI Assistant</h3>
+            <button onClick={() => setShowAIChat(false)} className="btn btn-sm btn-ghost" style={{ padding: '4px 8px' }}>✕ Close</button>
           </div>
           <AIChatbot isEmbedded={true} onClose={() => setShowAIChat(false)} />
         </div>
@@ -220,6 +199,9 @@ function ParentDashboard() {
       <div className="dash-tabs">
         <button className={`dash-tab ${activeTab === 'bookings' ? 'active' : ''}`} onClick={() => setActiveTab('bookings')}>
           {String.fromCodePoint(128203)} {t('booking.myBookings')}
+        </button>
+        <button className={`dash-tab ${activeTab === 'reviews' ? 'active' : ''}`} onClick={() => setActiveTab('reviews')}>
+          {String.fromCodePoint(11088)} Reviews
         </button>
         <button className={`dash-tab ${activeTab === 'spending' ? 'active' : ''}`} onClick={() => setActiveTab('spending')}>
           {String.fromCodePoint(128176)} {t('parent.spending')}
@@ -233,7 +215,7 @@ function ParentDashboard() {
       </div>
 
       {/* ============================================
-          BOOKINGS TAB - PARENT (Delete, Message, Book Again)
+          BOOKINGS TAB
           ============================================ */}
       {activeTab === 'bookings' && (
         <div className="dash-content">
@@ -247,14 +229,10 @@ function ParentDashboard() {
           ) : (
             <div className="booking-list">
               {bookings.map((b) => {
-                // Normalize status to lowercase for consistent checking
                 const status = (b.status || '').toLowerCase();
                 const isCompleted = status === 'completed';
                 const isCancelled = status === 'cancelled' || status === 'canceled';
                 const isPending = status === 'pending';
-                
-                // Debug log to see what statuses are coming from the database
-                console.log(`📋 Parent Booking #${b.id} status: "${b.status}" -> normalized: "${status}"`);
                 
                 return (
                   <div key={b.id} className="booking-item">
@@ -279,107 +257,119 @@ function ParentDashboard() {
                       </span>
                     </div>
                     
-                    {/* PARENT ACTION BUTTONS */}
                     <div className="booking-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                      
-                      {/* Pending bookings - Cancel only */}
                       {isPending && (
                         <button onClick={() => cancelBooking(b.id)} className="btn btn-sm btn-outline-danger">
                           {t('booking.cancelled')}
                         </button>
                       )}
                       
-                      {/* COMPLETED bookings - Delete, Message, Book Again, Review, Report */}
                       {isCompleted && (
                         <>
-                          <button
-                            onClick={() => deleteBooking(b.id)}
-                            className="btn btn-sm btn-outline-danger"
-                            title="Permanently delete this booking"
-                          >
+                          <button onClick={() => deleteBooking(b.id)} className="btn btn-sm btn-outline-danger" title="Permanently delete">
                             🗑️ Delete
                           </button>
-                          <button
-                            onClick={() => messageBabysitter(b.babysitter_id)}
-                            className="btn btn-sm btn-outline"
-                            title="Message the babysitter"
-                          >
+                          <button onClick={() => messageBabysitter(b.babysitter_id)} className="btn btn-sm btn-outline" title="Message">
                             💬 Message
                           </button>
-                          <button
-                            onClick={() => bookAgain(b.babysitter_id)}
-                            className="btn btn-sm btn-primary"
-                            title="Book this babysitter again"
-                          >
+                          <button onClick={() => bookAgain(b.babysitter_id)} className="btn btn-sm btn-primary" title="Book Again">
                             📅 Book Again
                           </button>
-                          <button
-                            onClick={() => {
-                              setReviewModal({ open: true, booking: b });
-                              setReviewData({ rating: 0, comment: '' });
-                            }}
-                            className="btn btn-sm btn-outline"
-                          >
+                          <button onClick={() => { setReviewModal({ open: true, booking: b }); setReviewData({ rating: 0, comment: '' }); }} className="btn btn-sm btn-outline">
                             {String.fromCodePoint(11088)} {t('review.title')}
                           </button>
-                          <button
-                            onClick={() => {
-                              setSelectedBookingForReport(b);
-                              setShowReportModal(true);
-                            }}
-                            className="btn btn-sm btn-outline-danger"
-                          >
+                          <button onClick={() => { setSelectedBookingForReport(b); setShowReportModal(true); }} className="btn btn-sm btn-outline-danger">
                             🚨 Report
                           </button>
                         </>
                       )}
                       
-                      {/* CANCELLED bookings - Delete, Message, Book Again, Report */}
                       {isCancelled && (
                         <>
-                          <button
-                            onClick={() => deleteBooking(b.id)}
-                            className="btn btn-sm btn-outline-danger"
-                            title="Permanently delete this booking"
-                          >
+                          <button onClick={() => deleteBooking(b.id)} className="btn btn-sm btn-outline-danger" title="Permanently delete">
                             🗑️ Delete
                           </button>
-                          <button
-                            onClick={() => messageBabysitter(b.babysitter_id)}
-                            className="btn btn-sm btn-outline"
-                            title="Message the babysitter"
-                          >
+                          <button onClick={() => messageBabysitter(b.babysitter_id)} className="btn btn-sm btn-outline" title="Message">
                             💬 Message
                           </button>
-                          <button
-                            onClick={() => bookAgain(b.babysitter_id)}
-                            className="btn btn-sm btn-primary"
-                            title="Book this babysitter again"
-                          >
+                          <button onClick={() => bookAgain(b.babysitter_id)} className="btn btn-sm btn-primary" title="Book Again">
                             📅 Book Again
                           </button>
-                          <button
-                            onClick={() => {
-                              setSelectedBookingForReport(b);
-                              setShowReportModal(true);
-                            }}
-                            className="btn btn-sm btn-outline-danger"
-                          >
+                          <button onClick={() => { setSelectedBookingForReport(b); setShowReportModal(true); }} className="btn btn-sm btn-outline-danger">
                             🚨 Report
                           </button>
                         </>
-                      )}
-                      
-                      {/* Fallback: If status is something else, show a debug message */}
-                      {!isPending && !isCompleted && !isCancelled && (
-                        <span style={{ fontSize: '0.7rem', color: '#ff6b6b' }}>
-                          ⚠️ Unknown status: "{b.status}"
-                        </span>
                       )}
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============================================
+          REVIEWS TAB (NEW)
+          ============================================ */}
+      {activeTab === 'reviews' && (
+        <div className="dash-content">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+            <h3 style={{ margin: 0 }}>⭐ Reviews I Received</h3>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              {receivedReviews.length} review{receivedReviews.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {receivedReviews.length === 0 ? (
+            <div className="no-results">
+              <div style={{ fontSize: '3rem', marginBottom: '16px' }}>⭐</div>
+              <p>No reviews yet.</p>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Complete bookings to receive reviews from babysitters.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {receivedReviews.map((review) => (
+                <div key={review.id} style={{
+                  padding: '18px 20px',
+                  borderRadius: 'var(--radius)',
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border-light)',
+                  boxShadow: 'var(--shadow-sm)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                        color: 'white',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: '700', fontSize: '0.85rem',
+                      }}>
+                        {review.first_name?.[0] || '?'}{review.last_name?.[0] || ''}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600', fontSize: '0.92rem' }}>
+                          {review.first_name || 'Anonymous'} {review.last_name || ''}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          {new Date(review.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric', month: 'short', day: 'numeric'
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <Rating value={review.rating} />
+                  </div>
+                  {review.comment && (
+                    <p style={{ margin: '8px 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6, fontStyle: 'italic' }}>
+                      "{review.comment}"
+                    </p>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -558,18 +548,13 @@ function ParentDashboard() {
       {selectedBookingForReport && (
         <ReportModal
           isOpen={showReportModal}
-          onClose={() => {
-            setShowReportModal(false);
-            setSelectedBookingForReport(null);
-          }}
+          onClose={() => { setShowReportModal(false); setSelectedBookingForReport(null); }}
           reportedUserId={selectedBookingForReport.babysitter_id}
           reportedName={`${selectedBookingForReport.babysitter_first_name || ''} ${selectedBookingForReport.babysitter_last_name || ''}`}
           reportedRole="babysitter"
           bookingId={selectedBookingForReport.id}
           reporterRole="parent"
-          onSuccess={() => {
-            addToast('Report submitted successfully!', 'success');
-          }}
+          onSuccess={() => { addToast('Report submitted successfully!', 'success'); }}
         />
       )}
     </div>
