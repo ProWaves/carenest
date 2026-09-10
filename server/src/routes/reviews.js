@@ -7,7 +7,7 @@ const { createNotification } = require('../routes/notifications');
 const router = express.Router();
 
 // ============================================
-// PARENT REVIEWS BABYSITTER
+// PARENT REVIEWS BABYSITTER (Create)
 // ============================================
 router.post('/', authenticate, authorize('parent'), async (req, res) => {
   try {
@@ -77,6 +77,50 @@ router.get('/babysitter/:id', async (req, res) => {
 });
 
 // ============================================
+// GET RECEIVED REVIEWS (Current user)
+// Works for both babysitters (via reviews) and parents (via parent_reviews)
+// ============================================
+router.get('/received', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role = req.user.role;
+
+    let rows = [];
+
+    if (role === 'babysitter') {
+      // Reviews a babysitter received from parents
+      const result = await db.query(
+        `SELECT r.id, r.rating, r.comment, r.created_at,
+                u.first_name, u.last_name
+         FROM reviews r
+         JOIN users u ON u.id = r.parent_id
+         WHERE r.babysitter_id = $1
+         ORDER BY r.created_at DESC`,
+        [userId]
+      );
+      rows = result.rows;
+    } else if (role === 'parent') {
+      // Reviews a parent received from babysitters
+      const result = await db.query(
+        `SELECT r.id, r.rating, r.comment, r.created_at,
+                u.first_name, u.last_name
+         FROM parent_reviews r
+         JOIN users u ON u.id = r.babysitter_id
+         WHERE r.parent_id = $1
+         ORDER BY r.created_at DESC`,
+        [userId]
+      );
+      rows = result.rows;
+    }
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Get received reviews error:', error);
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+// ============================================
 // ADMIN - GET ALL REVIEWS
 // ============================================
 router.get('/admin/all', authenticate, authorize('admin'), async (req, res) => {
@@ -123,7 +167,7 @@ router.get('/admin/parent-reviews', authenticate, authorize('admin'), async (req
 });
 
 // ============================================
-// USER - GET MY REVIEWS
+// USER - GET MY REVIEWS (submitted by current user)
 // ============================================
 router.get('/my-reviews', authenticate, async (req, res) => {
   try {
