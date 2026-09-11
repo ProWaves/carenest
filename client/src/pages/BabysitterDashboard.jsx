@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+// client/src/pages/BabysitterDashboard.jsx
+import React, { useState, useEffect } from 'react';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -8,6 +9,7 @@ import BackButton from '../components/BackButton';
 import ReportModal from '../components/ReportModal';
 import BabysitterLocation from '../components/BabysitterLocation';
 import Rating from '../components/Rating';
+import StatDetailModal from '../components/StatDetailModal';
 
 function BabysitterDashboard() {
   const { user } = useAuth();
@@ -68,6 +70,9 @@ function BabysitterDashboard() {
   // Report state
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedBookingForReport, setSelectedBookingForReport] = useState(null);
+
+  // ✅ Drill-down modal state
+  const [detailModal, setDetailModal] = useState({ open: false, type: null, statusFilter: null });
 
   // Load all data
   useEffect(() => {
@@ -190,6 +195,74 @@ function BabysitterDashboard() {
   };
 
   // ============================================
+  // DRILL-DOWN HELPERS
+  // ============================================
+  const getDetailRows = () => {
+    if (detailModal.statusFilter) {
+      return bookings.filter(b => (b.status || '').toLowerCase() === detailModal.statusFilter);
+    }
+    // Default: completed
+    return bookings.filter(b => (b.status || '').toLowerCase() === 'completed');
+  };
+
+  const getDetailTitle = () => {
+    if (detailModal.statusFilter) {
+      const label = detailModal.statusFilter.charAt(0).toUpperCase() + detailModal.statusFilter.slice(1).replace('_', ' ');
+      return `📋 ${label} Bookings`;
+    }
+    return '💰 Earnings Detail';
+  };
+
+  const getDetailSubtitle = () => {
+    const rows = getDetailRows();
+    const total = rows.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+    return `${rows.length} booking${rows.length === 1 ? '' : 's'} · $${total.toFixed(2)}`;
+  };
+
+  const detailColumns = [
+    { key: 'id', label: 'ID', render: (b) => `#${b.id}` },
+    {
+      key: 'parent', label: 'Parent',
+      render: (b) => `${b.parent_first_name || ''} ${b.parent_last_name || ''}`.trim() || '—',
+    },
+    {
+      key: 'date', label: 'Date',
+      render: (b) => b.start_date
+        ? `${new Date(b.start_date).toLocaleDateString()} → ${new Date(b.end_date).toLocaleDateString()}`
+        : '—',
+    },
+    {
+      key: 'hours', label: 'Hours',
+      render: (b) => `${parseFloat(b.total_hours || 0).toFixed(1)}h`,
+    },
+    {
+      key: 'amount', label: 'Earned',
+      render: (b) => `$${parseFloat(b.total_amount || 0).toFixed(2)}`,
+    },
+    {
+      key: 'status', label: 'Status',
+      render: (b) => (
+        <span style={{
+          padding: '2px 10px', borderRadius: '10px',
+          fontSize: '0.72rem', fontWeight: '600', textTransform: 'uppercase',
+          background: b.status === 'completed' ? '#D1FAE5' :
+                      b.status === 'cancelled' ? '#FEE2E2' :
+                      b.status === 'pending' ? '#FEF3C7' :
+                      b.status === 'confirmed' ? '#DBEAFE' :
+                      b.status === 'in_progress' ? '#EDE9FE' : '#F3F4F6',
+          color: b.status === 'completed' ? '#065F46' :
+                 b.status === 'cancelled' ? '#991B1B' :
+                 b.status === 'pending' ? '#92400E' :
+                 b.status === 'confirmed' ? '#1E40AF' :
+                 b.status === 'in_progress' ? '#5B21B6' : '#374151',
+        }}>
+          {b.status}
+        </span>
+      ),
+    },
+  ];
+
+  // ============================================
   // DELETE BOOKING FOR BABYSITTER
   // ============================================
   const deleteBooking = async (id) => {
@@ -230,7 +303,6 @@ function BabysitterDashboard() {
   // ============================================
   // AVAILABILITY MANAGEMENT
   // ============================================
-  
   const toggleDay = (day) => {
     setAvailability((prev) => {
       const exists = prev.find((a) => a.day_of_week === day);
@@ -354,7 +426,6 @@ function BabysitterDashboard() {
   // ============================================
   // SLOT MANAGEMENT FUNCTIONS
   // ============================================
-  
   const handleDeleteSlot = async (slotId) => {
     if (!window.confirm('Are you sure you want to delete this availability slot?')) return;
     
@@ -758,7 +829,7 @@ function BabysitterDashboard() {
   );
 
   // ============================================
-  // RENDER REVIEWS TAB (NEW)
+  // RENDER REVIEWS TAB
   // ============================================
   const renderReviewsTab = () => (
     <div className="dash-content">
@@ -1236,30 +1307,60 @@ function BabysitterDashboard() {
   );
 
   // ============================================
-  // RENDER EARNINGS TAB
+  // RENDER EARNINGS TAB — NOW CLICKABLE
   // ============================================
   const renderEarningsTab = () => (
     <div className="dash-content">
       <div className="stats-grid admin-stats" style={{ marginBottom: 20 }}>
-        <div className="stat stat-primary">
+        <div
+          className="stat stat-primary"
+          onClick={() => setDetailModal({ open: true, type: 'total', statusFilter: 'completed' })}
+          style={{ cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+        >
           <span className="stat-number">${earnings.total.toFixed(2)}</span>
           <span className="stat-label">Total Revenue</span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>Tap for details →</span>
         </div>
-        <div className="stat">
+        <div
+          className="stat"
+          onClick={() => setDetailModal({ open: true, type: 'completed', statusFilter: 'completed' })}
+          style={{ cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+        >
           <span className="stat-number">{earnings.completedCount}</span>
           <span className="stat-label">Completed Bookings</span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>Tap for details →</span>
         </div>
-        <div className="stat">
+        <div
+          className="stat"
+          onClick={() => setDetailModal({ open: true, type: 'average', statusFilter: 'completed' })}
+          style={{ cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+        >
           <span className="stat-number">${earnings.average.toFixed(2)}</span>
           <span className="stat-label">Average per Booking</span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>Tap for details →</span>
         </div>
       </div>
 
+      {/* Status breakdown — clickable per status */}
       <div className="stats-grid admin-stats" style={{ marginBottom: 20 }}>
         {Object.entries(earnings.statusBreakdown).map(([status, count]) => (
-          <div key={status} className={`stat ${status === 'completed' ? 'stat-success' : status === 'cancelled' ? 'stat-danger' : status === 'pending' ? 'stat-warning' : 'stat-accent'}`}>
+          <div
+            key={status}
+            className={`stat ${status === 'completed' ? 'stat-success' : status === 'cancelled' ? 'stat-danger' : status === 'pending' ? 'stat-warning' : 'stat-accent'}`}
+            onClick={() => setDetailModal({ open: true, type: status, statusFilter: status })}
+            style={{ cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
             <span className="stat-number">{count}</span>
             <span className="stat-label" style={{ textTransform: 'capitalize' }}>{status}</span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>Tap for details →</span>
           </div>
         ))}
       </div>
@@ -1410,6 +1511,17 @@ function BabysitterDashboard() {
           onSuccess={() => { addToast('Report submitted successfully!', 'success'); }}
         />
       )}
+
+      {/* ✅ Drill-Down Modal */}
+      <StatDetailModal
+        isOpen={detailModal.open}
+        onClose={() => setDetailModal({ open: false, type: null, statusFilter: null })}
+        title={getDetailTitle()}
+        subtitle={getDetailSubtitle()}
+        columns={detailColumns}
+        rows={getDetailRows()}
+        emptyText="No bookings in this category"
+      />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+// client/src/pages/ParentDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
@@ -8,6 +9,7 @@ import Modal from '../components/Modal';
 import Rating from '../components/Rating';
 import AIChatbot from '../components/AIChatbot';
 import ReportModal from '../components/ReportModal';
+import StatDetailModal from '../components/StatDetailModal';
 
 function ParentDashboard() {
   const { user } = useAuth();
@@ -30,7 +32,9 @@ function ParentDashboard() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedBookingForReport, setSelectedBookingForReport] = useState(null);
 
-  // Load all data
+  // ✅ Drill-down modal state
+  const [detailModal, setDetailModal] = useState({ open: false, type: null });
+
   useEffect(() => {
     loadAllData();
   }, []);
@@ -73,9 +77,90 @@ function ParentDashboard() {
   };
 
   // ============================================
-  // BOOKING ACTION FUNCTIONS - PARENT
+  // DRILL-DOWN HELPERS
   // ============================================
+  const getDetailRows = (type) => {
+    const completed = bookings.filter(b => b.status === 'completed');
+    switch (type) {
+      case 'totalSpent':
+      case 'avgBooking':
+      case 'completedBookings':
+        return completed;
+      case 'allBookings':
+        return bookings;
+      case 'recent':
+        return spending.recent;
+      default:
+        return [];
+    }
+  };
 
+  const getDetailTitle = (type) => {
+    switch (type) {
+      case 'totalSpent':        return '💵 Spending Detail (Completed Bookings)';
+      case 'avgBooking':        return '📊 Average per Booking';
+      case 'completedBookings': return '✅ Completed Bookings';
+      case 'allBookings':       return '📅 All Bookings';
+      case 'recent':            return '🕐 Recent Transactions';
+      default:                  return 'Details';
+    }
+  };
+
+  const getDetailSubtitle = (type) => {
+    const rows = getDetailRows(type);
+    const total = rows.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+    if (type === 'totalSpent' || type === 'avgBooking' || type === 'completedBookings') {
+      return `Total: $${total.toFixed(2)}`;
+    }
+    return `${rows.length} booking${rows.length === 1 ? '' : 's'}`;
+  };
+
+  const detailColumns = [
+    { key: 'id', label: 'ID', render: (b) => `#${b.id}` },
+    {
+      key: 'babysitter', label: 'Babysitter',
+      render: (b) => `${b.babysitter_first_name || ''} ${b.babysitter_last_name || ''}`.trim() || '—',
+    },
+    {
+      key: 'date', label: 'Date',
+      render: (b) => b.start_date
+        ? `${new Date(b.start_date).toLocaleDateString()} → ${new Date(b.end_date).toLocaleDateString()}`
+        : '—',
+    },
+    {
+      key: 'hours', label: 'Hours',
+      render: (b) => `${parseFloat(b.total_hours || 0).toFixed(1)}h`,
+    },
+    {
+      key: 'amount', label: 'Amount',
+      render: (b) => `$${parseFloat(b.total_amount || 0).toFixed(2)}`,
+    },
+    {
+      key: 'status', label: 'Status',
+      render: (b) => (
+        <span style={{
+          padding: '2px 10px', borderRadius: '10px',
+          fontSize: '0.72rem', fontWeight: '600', textTransform: 'uppercase',
+          background: b.status === 'completed' ? '#D1FAE5' :
+                      b.status === 'cancelled' ? '#FEE2E2' :
+                      b.status === 'pending' ? '#FEF3C7' :
+                      b.status === 'confirmed' ? '#DBEAFE' :
+                      b.status === 'in_progress' ? '#EDE9FE' : '#F3F4F6',
+          color: b.status === 'completed' ? '#065F46' :
+                 b.status === 'cancelled' ? '#991B1B' :
+                 b.status === 'pending' ? '#92400E' :
+                 b.status === 'confirmed' ? '#1E40AF' :
+                 b.status === 'in_progress' ? '#5B21B6' : '#374151',
+        }}>
+          {b.status}
+        </span>
+      ),
+    },
+  ];
+
+  // ============================================
+  // BOOKING ACTION FUNCTIONS
+  // ============================================
   const deleteBooking = async (id) => {
     if (!window.confirm('Are you sure you want to permanently delete this booking? This action cannot be undone.')) return;
     
@@ -100,7 +185,6 @@ function ParentDashboard() {
   // ============================================
   // EXISTING FUNCTIONS
   // ============================================
-
   const addChild = async (e) => {
     e.preventDefault();
     try {
@@ -185,7 +269,6 @@ function ParentDashboard() {
         </div>
       </div>
 
-      {/* AI Chatbot Panel */}
       {showAIChat && (
         <div style={{ marginBottom: '24px', background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
@@ -310,7 +393,7 @@ function ParentDashboard() {
       )}
 
       {/* ============================================
-          REVIEWS TAB (NEW)
+          REVIEWS TAB
           ============================================ */}
       {activeTab === 'reviews' && (
         <div className="dash-content">
@@ -375,23 +458,45 @@ function ParentDashboard() {
         </div>
       )}
 
-      {/* Spending Tab */}
+      {/* Spending Tab — clickable cards */}
       {activeTab === 'spending' && (
         <div className="dash-content">
           <div className="stats-grid admin-stats" style={{ marginBottom: 20 }}>
-            <div className="stat stat-primary">
+            <div
+              className="stat stat-primary"
+              onClick={() => setDetailModal({ open: true, type: 'totalSpent' })}
+              style={{ cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+            >
               <span className="stat-number">{spending.total.toFixed(2)}</span>
               <span className="stat-label">{t('admin.totalRevenue')}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>Tap for details →</span>
             </div>
-            <div className="stat">
+            <div
+              className="stat"
+              onClick={() => setDetailModal({ open: true, type: 'avgBooking' })}
+              style={{ cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+            >
               <span className="stat-number">{spending.average.toFixed(2)}</span>
               <span className="stat-label">{t('parent.avgBooking')}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>Tap for details →</span>
             </div>
-            <div className="stat">
+            <div
+              className="stat"
+              onClick={() => setDetailModal({ open: true, type: 'completedBookings' })}
+              style={{ cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+            >
               <span className="stat-number">{bookings.filter(b => b.status === 'completed').length}</span>
               <span className="stat-label">{t('home.bookings')}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>Tap for details →</span>
             </div>
           </div>
+
           {spending.monthly.length > 0 && (
             <div className="detail-card" style={{ marginBottom: 20 }}>
               <h3 style={{ marginBottom: 16 }}>{String.fromCodePoint(128202)} {t('parent.monthlySpending')}</h3>
@@ -409,12 +514,26 @@ function ParentDashboard() {
               </div>
             </div>
           )}
+
           {spending.recent.length > 0 && (
             <div className="detail-card">
-              <h3 style={{ marginBottom: 16 }}>{String.fromCodePoint(128339)} {t('parent.recentTransactions')}</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0 }}>{String.fromCodePoint(128339)} {t('parent.recentTransactions')}</h3>
+                <button
+                  onClick={() => setDetailModal({ open: true, type: 'recent' })}
+                  className="btn btn-sm btn-outline"
+                >
+                  View all →
+                </button>
+              </div>
               <div className="booking-list">
                 {spending.recent.map((b) => (
-                  <div key={b.id} className="booking-item" style={{ padding: '12px 16px' }}>
+                  <div
+                    key={b.id}
+                    className="booking-item"
+                    style={{ padding: '12px 16px', cursor: 'pointer' }}
+                    onClick={() => setDetailModal({ open: true, type: 'recent' })}
+                  >
                     <div className="booking-main">
                       <div className="booking-person">
                         <div className="avatar-sm">{b.babysitter_first_name?.[0]}</div>
@@ -557,6 +676,17 @@ function ParentDashboard() {
           onSuccess={() => { addToast('Report submitted successfully!', 'success'); }}
         />
       )}
+
+      {/* ✅ Drill-Down Modal */}
+      <StatDetailModal
+        isOpen={detailModal.open}
+        onClose={() => setDetailModal({ open: false, type: null })}
+        title={getDetailTitle(detailModal.type)}
+        subtitle={getDetailSubtitle(detailModal.type)}
+        columns={detailColumns}
+        rows={getDetailRows(detailModal.type)}
+        emptyText="No bookings in this category"
+      />
     </div>
   );
 }

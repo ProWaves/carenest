@@ -4,6 +4,7 @@ import API from '../api/axios';
 import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../components/Toast';
 import AdminLocationManager from '../components/admin/AdminLocationManager';
+import StatDetailModal from '../components/StatDetailModal';
 
 const COLORS = {
   purple: '#6366f1', green: '#10b981', amber: '#f59e0b', red: '#ef4444',
@@ -43,7 +44,7 @@ function DonutChart({ data, size = 160 }) {
   );
 }
 
-function HorizontalBarChart({ data, maxWidth = 400 }) {
+function HorizontalBarChart({ data }) {
   const max = Math.max(...data.map(d => d.value), 1);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -121,9 +122,11 @@ function AdminDashboard() {
   const [notifForm, setNotifForm] = useState({ title: '', message: '', target_role: 'all', target_user_id: '' });
   const [showNotifModal, setShowNotifModal] = useState(false);
 
-  // Only load data on mount, not on tab change
-  useEffect(() => { 
-    loadAllData(); 
+  // ✅ Drill-down modal state
+  const [detailModal, setDetailModal] = useState({ open: false, type: null });
+
+  useEffect(() => {
+    loadAllData();
   }, []);
 
   const loadAllData = async () => {
@@ -154,7 +157,6 @@ function AdminDashboard() {
       setRefunds(refundsRes.data);
       setAdminJobs(adminJobsRes.data);
     } catch (error) {
-      // Only show toast if it's not a 401/403 (which triggers redirect)
       if (error.response?.status !== 401 && error.response?.status !== 403) {
         addToast('Failed to load admin data', 'error');
       }
@@ -361,19 +363,85 @@ function AdminDashboard() {
   const getFilteredDocuments = () => { let f = documents; if (filters.documentStatus !== 'all') f = f.filter(d => filters.documentStatus === 'verified' ? d.is_verified : !d.is_verified); if (searchTerm) { const s = searchTerm.toLowerCase(); f = f.filter(d => d.first_name?.toLowerCase().includes(s) || d.last_name?.toLowerCase().includes(s) || d.email?.toLowerCase().includes(s)); } return f; };
   const getFilteredReviews = () => { let f = reviews; if (filters.reviewRating !== 'all') f = f.filter(r => parseInt(r.rating) === parseInt(filters.reviewRating)); if (searchTerm) { const s = searchTerm.toLowerCase(); f = f.filter(r => r.reviewer_name?.toLowerCase().includes(s) || r.babysitter_name?.toLowerCase().includes(s) || r.comment?.toLowerCase().includes(s)); } return f; };
   const getFilteredRefunds = () => { let f = refunds; if (filters.refundStatus !== 'all') f = f.filter(r => r.refund_status === filters.refundStatus); if (searchTerm) { const s = searchTerm.toLowerCase(); f = f.filter(r => r.reporter_name?.toLowerCase().includes(s) || r.reported_name?.toLowerCase().includes(s) || r.reason?.toLowerCase().includes(s)); } return f; };
-  const getFilteredAdminJobs = () => { let f = adminJobs; if (searchTerm) { const s = searchTerm.toLowerCase(); f = f.filter(j => j.title?.toLowerCase().includes(s) || j.first_name?.toLowerCase().includes(s) || j.last_name?.toLowerCase().includes(s) || j.city?.toLowerCase().includes(s)); } return f; };
   const getReportStats = () => ({ total: reports.length, pending: reports.filter(r => r.status === 'pending').length, reviewed: reports.filter(r => r.status === 'reviewed').length, resolved: reports.filter(r => r.status === 'resolved').length, dismissed: reports.filter(r => r.status === 'dismissed').length });
+
+  // ============================================
+  // DRILL-DOWN MODAL HELPERS
+  // ============================================
+  const getDetailRows = (type) => {
+    switch (type) {
+      case 'users':    return users;
+      case 'revenue':  return bookings.filter(b => b.status === 'completed');
+      case 'bookings': return bookings;
+      case 'reviews':  return reviews;
+      case 'pending':  return reports.filter(r => r.status === 'pending');
+      default:         return [];
+    }
+  };
+
+  const getDetailTitle = (type) => {
+    switch (type) {
+      case 'users':    return '👥 All Users';
+      case 'revenue':  return '💰 Completed Bookings (Revenue)';
+      case 'bookings': return '📅 All Bookings';
+      case 'reviews':  return '⭐ All Reviews';
+      case 'pending':  return '⚠️ Pending Items (Reports)';
+      default:         return 'Details';
+    }
+  };
+
+  const getDetailSubtitle = (type) => {
+    const rows = getDetailRows(type);
+    if (type === 'revenue') {
+      const total = rows.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+      return `${rows.length} completed · Total: $${total.toFixed(2)}`;
+    }
+    return `${rows.length} record${rows.length === 1 ? '' : 's'}`;
+  };
+
+  const getDetailColumns = (type) => {
+    if (type === 'users') return [
+      { key: 'name',   label: 'Name',   render: (u) => `${u.first_name || ''} ${u.last_name || ''}` },
+      { key: 'email',  label: 'Email',  render: (u) => u.email },
+      { key: 'role',   label: 'Role',   render: (u) => u.role },
+      { key: 'city',   label: 'City',   render: (u) => u.city || '—' },
+      { key: 'status', label: 'Status', render: (u) => u.suspended_at ? '⛔ Suspended' : (u.is_active ? '✅ Active' : '❌ Inactive') },
+    ];
+    if (type === 'reviews') return [
+      { key: 'reviewer',   label: 'Reviewer',   render: (r) => r.reviewer_name || `${r.parent_first_name || ''} ${r.parent_last_name || ''}` },
+      { key: 'babysitter', label: 'Babysitter', render: (r) => r.babysitter_name || `${r.babysitter_first_name || ''} ${r.babysitter_last_name || ''}` },
+      { key: 'rating',     label: 'Rating',     render: (r) => `⭐ ${r.rating}/5` },
+      { key: 'comment',    label: 'Comment',    render: (r) => r.comment || '—' },
+      { key: 'date',       label: 'Date',       render: (r) => r.created_at ? new Date(r.created_at).toLocaleDateString() : '—' },
+    ];
+    if (type === 'pending') return [
+      { key: 'id',       label: 'ID',       render: (r) => `#${r.id}` },
+      { key: 'reporter', label: 'Reporter', render: (r) => `${r.reporter_first_name || ''} ${r.reporter_last_name || ''}` },
+      { key: 'reported', label: 'Reported', render: (r) => `${r.reported_first_name || ''} ${r.reported_last_name || ''}` },
+      { key: 'reason',   label: 'Reason',   render: (r) => r.reason || '—' },
+      { key: 'severity', label: 'Severity', render: (r) => (r.severity || 'medium').toUpperCase() },
+      { key: 'date',     label: 'Date',     render: (r) => r.created_at ? new Date(r.created_at).toLocaleDateString() : '—' },
+    ];
+    // default: bookings
+    return [
+      { key: 'id',     label: 'ID',     render: (b) => `#${b.id}` },
+      { key: 'parent', label: 'Parent', render: (b) => `${b.parent_first_name || b.parent_name || ''} ${b.parent_last_name || ''}`.trim() || '—' },
+      { key: 'sitter', label: 'Sitter', render: (b) => `${b.babysitter_first_name || b.babysitter_name || ''} ${b.babysitter_last_name || ''}`.trim() || '—' },
+      { key: 'date',   label: 'Date',   render: (b) => b.start_date ? new Date(b.start_date).toLocaleDateString() : '—' },
+      { key: 'amount', label: 'Amount', render: (b) => `$${parseFloat(b.total_amount || 0).toFixed(2)}` },
+      { key: 'status', label: 'Status', render: (b) => (
+          <span style={{
+            padding: '2px 10px', borderRadius: '10px',
+            fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase',
+            background: getStatusColor(b.status), color: '#fff',
+          }}>{b.status}</span>
+        ) },
+    ];
+  };
 
   if (loading) return (<div className="dashboard admin-dashboard"><div className="loading-container"><div className="spinner"></div><p>Loading admin dashboard...</p></div></div>);
 
   const reportStats = getReportStats();
-  const healthScore = stats ? Math.min(100, Math.round(
-    (stats.totalUsers > 0 ? 20 : 0) +
-    (parseFloat(analytics.health?.completionRate || 0) > 70 ? 25 : parseFloat(analytics.health?.completionRate || 0) * 0.35) +
-    (stats.cancelledBookings / Math.max(stats.totalBookings, 1) < 0.2 ? 25 : 10) +
-    (stats.pendingApprovals < 10 ? 15 : 5) +
-    (reports.filter(r => r.status === 'pending').length < 5 ? 15 : 5)
-  )) : 0;
 
   const userGrowthByMonth = {};
   (analytics.userGrowth || []).forEach(r => {
@@ -425,28 +493,16 @@ function AdminDashboard() {
   const filterSelectStyle = { padding: '11px 36px 11px 14px', borderRadius: 'var(--radius)', border: '1.5px solid var(--color-border)', fontSize: '0.88rem', fontWeight: '500', background: 'var(--color-surface)', color: 'var(--color-text)', outline: 'none', cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '14px', transition: 'border 0.2s, box-shadow 0.2s', boxSizing: 'border-box' };
   const filterBarStyle = { display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px', background: 'var(--color-bg-alt, rgba(0,0,0,0.02))', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-light)' };
 
-  // Handle tab change
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
     setSearchTerm('');
-    
-    // Only reset filters for specific tabs
-    if (tabId === 'applications') {
-      setFilters({...filters, babysitterStatus: 'all'});
-    } else if (tabId === 'documents') {
-      setFilters({...filters, documentStatus: 'all'});
-    } else if (tabId === 'users') {
-      setFilters({...filters, userRole: 'all'});
-    } else if (tabId === 'bookings') {
-      setFilters({...filters, bookingStatus: 'all'});
-    } else if (tabId === 'reports') {
-      setFilters({...filters, reportStatus: 'all'});
-    } else if (tabId === 'reviews') {
-      setFilters({...filters, reviewRating: 'all'});
-    } else if (tabId === 'refunds') {
-      setFilters({...filters, refundStatus: 'all'});
-    }
-    // Don't reset filters for 'locations' tab
+    if (tabId === 'applications') setFilters({...filters, babysitterStatus: 'all'});
+    else if (tabId === 'documents') setFilters({...filters, documentStatus: 'all'});
+    else if (tabId === 'users') setFilters({...filters, userRole: 'all'});
+    else if (tabId === 'bookings') setFilters({...filters, bookingStatus: 'all'});
+    else if (tabId === 'reports') setFilters({...filters, reportStatus: 'all'});
+    else if (tabId === 'reviews') setFilters({...filters, reviewRating: 'all'});
+    else if (tabId === 'refunds') setFilters({...filters, refundStatus: 'all'});
   };
 
   return (
@@ -461,6 +517,7 @@ function AdminDashboard() {
             <p style={{ margin: '4px 0 0', opacity: 0.85, fontSize: '0.9rem' }}>Manage your CareNest platform</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {/* ✅ Health chip removed */}
             <div style={{ textAlign: 'center', padding: '0 16px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>
               <div style={{ fontSize: '1.4rem', fontWeight: '800' }}>{stats?.totalUsers || 0}</div>
               <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Users</div>
@@ -472,10 +529,6 @@ function AdminDashboard() {
             <div style={{ textAlign: 'center', padding: '0 16px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>
               <div style={{ fontSize: '1.4rem', fontWeight: '800' }}>{stats?.totalBookings || 0}</div>
               <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Bookings</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '0 12px' }}>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800' }}>{healthScore}%</div>
-              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Health</div>
             </div>
             <button onClick={loadAllData} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)', color: '#fff', borderRadius: 'var(--radius)', padding: '8px 14px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: '600', backdropFilter: 'blur(4px)' }}>
               Refresh
@@ -501,17 +554,23 @@ function AdminDashboard() {
       {/* ===== OVERVIEW TAB ===== */}
       {activeTab === 'overview' && stats && (
         <div className="dash-content">
-          {/* Quick Stats Row */}
+          {/* Quick Stats Row — all 6 cards clickable */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '20px' }}>
             {[
-              { icon: '👥', label: 'Total Users', value: stats.totalUsers, color: COLORS.purple, sub: `${stats.totalParents} parents · ${stats.totalBabysitters} sitters` },
-              { icon: '💰', label: 'Total Revenue', value: `$${parseFloat(stats.totalRevenue || 0).toFixed(0)}`, color: COLORS.green, sub: `Monthly: $${parseFloat(stats.monthlyRevenue || 0).toFixed(0)}` },
-              { icon: '📅', label: 'Total Bookings', value: stats.totalBookings, color: COLORS.blue, sub: `${stats.completedBookings} completed · ${stats.activeBookings} active` },
-              { icon: '⭐', label: 'Avg Rating', value: analytics.ratingDist?.avgRating || '0.0', color: COLORS.amber, sub: `${analytics.ratingDist?.totalReviews || 0} reviews` },
-              { icon: '⚠️', label: 'Pending', value: stats.pendingApprovals + stats.pendingDocuments + reportStats.pending, color: COLORS.orange, sub: `${stats.pendingApprovals} approvals · ${stats.pendingDocuments} docs` },
-              { icon: '📈', label: 'Completion', value: `${parseFloat(analytics.health?.completionRate || 0).toFixed(0)}%`, color: COLORS.teal, sub: `Avg ${analytics.health?.avgBookingDurationMins || 0}min/booking` },
+              { icon: '👥', label: 'Total Users',    value: stats.totalUsers, color: COLORS.purple, sub: `${stats.totalParents} parents · ${stats.totalBabysitters} sitters`, type: 'users' },
+              { icon: '💰', label: 'Total Revenue',  value: `$${parseFloat(stats.totalRevenue || 0).toFixed(0)}`, color: COLORS.green, sub: `Monthly: $${parseFloat(stats.monthlyRevenue || 0).toFixed(0)}`, type: 'revenue' },
+              { icon: '📅', label: 'Total Bookings', value: stats.totalBookings, color: COLORS.blue, sub: `${stats.completedBookings} completed · ${stats.activeBookings} active`, type: 'bookings' },
+              { icon: '⭐', label: 'Avg Rating',     value: analytics.ratingDist?.avgRating || '0.0', color: COLORS.amber, sub: `${analytics.ratingDist?.totalReviews || 0} reviews`, type: 'reviews' },
+              { icon: '⚠️', label: 'Pending',        value: stats.pendingApprovals + stats.pendingDocuments + reportStats.pending, color: COLORS.orange, sub: `${stats.pendingApprovals} approvals · ${stats.pendingDocuments} docs`, type: 'pending' },
+              { icon: '📈', label: 'Completion',     value: `${parseFloat(analytics.health?.completionRate || 0).toFixed(0)}%`, color: COLORS.teal, sub: `Avg ${analytics.health?.avgBookingDurationMins || 0}min/booking`, type: 'bookings' },
             ].map((s, i) => (
-              <div key={i} style={{ ...miniCardStyle, borderLeft: `3px solid ${s.color}` }}>
+              <div
+                key={i}
+                onClick={() => setDetailModal({ open: true, type: s.type })}
+                style={{ ...miniCardStyle, borderLeft: `3px solid ${s.color}`, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: '500' }}>{s.label}</span>
                   <span style={{ fontSize: '1.1rem' }}>{s.icon}</span>
@@ -560,60 +619,7 @@ function AdminDashboard() {
             </div>
           </div>
 
-          {/* User Growth + Platform Health */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-            {/* User Growth */}
-            <div style={cardStyle()}>
-              <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>User Growth</h3>
-              {userGrowthData.length > 0 ? (
-                <div className="bar-chart" style={{ minHeight: 140 }}>
-                  {userGrowthData.map((m, i) => {
-                    const total = m.parents + m.babysitters;
-                    const max = Math.max(...userGrowthData.map(d => d.parents + d.babysitters), 1);
-                    return (
-                      <div key={i} className="bar-item" style={{ position: 'relative' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, alignItems: 'center' }}>
-                          <div style={{ width: '100%', maxWidth: 36, height: `${Math.max(4, (m.babysitters / max) * 100)}px`, background: COLORS.purple, borderRadius: '4px 4px 0 0', transition: 'height 0.5s' }} />
-                          <div style={{ width: '100%', maxWidth: 36, height: `${Math.max(4, (m.parents / max) * 100)}px`, background: COLORS.teal, borderRadius: '0 0 4px 4px', transition: 'height 0.5s' }} />
-                        </div>
-                        <span className="bar-value">{total}</span>
-                        <span className="bar-label">{m.month.slice(5)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>No data yet</p>}
-              <div style={{ display: 'flex', gap: '16px', marginTop: '8px', fontSize: '0.75rem' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: COLORS.teal, display: 'inline-block' }} /> Parents</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: COLORS.purple, display: 'inline-block' }} /> Babysitters</span>
-              </div>
-            </div>
-
-            {/* Platform Health */}
-            <div style={cardStyle()}>
-              <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>Platform Health</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {[
-                  { label: 'Health Score', value: `${healthScore}%`, bar: healthScore, color: healthScore > 70 ? COLORS.green : healthScore > 40 ? COLORS.amber : COLORS.red },
-                  { label: 'Completion Rate', value: `${parseFloat(analytics.health?.completionRate || 0).toFixed(1)}%`, bar: parseFloat(analytics.health?.completionRate || 0), color: COLORS.green },
-                  { label: 'Cancellation Rate', value: `${stats.cancellationRate}%`, bar: Math.min(100, parseFloat(stats.cancellationRate || 0)), color: parseFloat(stats.cancellationRate) > 20 ? COLORS.red : COLORS.green },
-                  { label: 'Pending Approvals', value: stats.pendingApprovals, bar: Math.min(100, stats.pendingApprovals * 10), color: stats.pendingApprovals > 5 ? COLORS.amber : COLORS.green },
-                  { label: 'Pending Documents', value: stats.pendingDocuments, bar: Math.min(100, stats.pendingDocuments * 5), color: stats.pendingDocuments > 10 ? COLORS.amber : COLORS.green },
-                  { label: 'Active Reports', value: reportStats.pending, bar: Math.min(100, reportStats.pending * 10), color: reportStats.pending > 3 ? COLORS.red : COLORS.green },
-                ].map((item, i) => (
-                  <div key={i}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>{item.label}</span>
-                      <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--color-text)' }}>{item.value}</span>
-                    </div>
-                    <div style={{ height: '6px', background: 'rgba(107,114,128,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${item.bar}%`, height: '100%', background: item.color, borderRadius: '3px', transition: 'width 0.6s ease' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          {/* ✅ Platform Health card REMOVED */}
 
           {/* Revenue by Top Babysitters + City Distribution + Monthly Bookings */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '20px' }}>
@@ -1196,7 +1202,6 @@ function AdminDashboard() {
       {/* ===== REVIEWS TAB ===== */}
       {activeTab === 'reviews' && (
         <div style={{ padding: '0 4px' }}>
-          {/* Summary Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '20px' }}>
             {[
               { label: 'Total Reviews', value: reviews.length, color: COLORS.purple, icon: '⭐' },
@@ -1213,7 +1218,6 @@ function AdminDashboard() {
               </div>
             ))}
           </div>
-          {/* Filter Bar */}
           <div style={filterBarStyle}>
             <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
               <svg style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', opacity: 0.45 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1230,7 +1234,6 @@ function AdminDashboard() {
               </select>
             </div>
           </div>
-          {/* Reviews List */}
           {getFilteredReviews().length === 0 ? <p style={{ color: 'var(--color-text-muted)', textAlign: 'center', padding: '40px' }}>No reviews found.</p> : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '14px' }}>
               {getFilteredReviews().map((r, i) => {
@@ -1343,7 +1346,6 @@ function AdminDashboard() {
               </div>
             ))}
           </div>
-          {/* Compose Notification */}
           <div style={{ ...cardStyle(), marginBottom: '20px' }}>
             <h3 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: '700', color: 'var(--color-text)' }}>Send Notification</h3>
             <div style={{ marginBottom: 16 }}>
@@ -1367,7 +1369,6 @@ function AdminDashboard() {
               <button onClick={handleSendNotification} style={{ padding: '10px 24px', borderRadius: 'var(--radius)', border: 'none', background: 'linear-gradient(135deg, #4F46E5, #6366F1)', color: '#fff', fontWeight: '700', fontSize: '0.88rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(79,70,229,0.3)' }}>{String.fromCodePoint(128227)} Send Notification</button>
             </div>
           </div>
-          {/* Recent Notification Activity */}
           <div style={cardStyle()}>
             <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>Recent Notification Activity</h3>
             {activityLog.filter(l => l.action?.includes('notification')).length === 0 ? (
@@ -1506,6 +1507,17 @@ function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* ✅ DRILL-DOWN MODAL */}
+      <StatDetailModal
+        isOpen={detailModal.open}
+        onClose={() => setDetailModal({ open: false, type: null })}
+        title={getDetailTitle(detailModal.type)}
+        subtitle={getDetailSubtitle(detailModal.type)}
+        columns={getDetailColumns(detailModal.type)}
+        rows={getDetailRows(detailModal.type)}
+        emptyText="No records in this category"
+      />
     </div>
   );
 }
