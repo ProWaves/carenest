@@ -155,7 +155,11 @@ function AdminDashboard() {
       setReviews(reviewsRes.data);
       setParentReviews(parentReviewsRes.data);
       setRefunds(refundsRes.data);
-      setAdminJobs(adminJobsRes.data);
+      // ✅ Safely extract jobs array from adminJobsRes (backend may return { jobs: [...] } or [...])
+      const jobsData = Array.isArray(adminJobsRes.data)
+        ? adminJobsRes.data
+        : (adminJobsRes.data?.jobs || []);
+      setAdminJobs(jobsData);
     } catch (error) {
       if (error.response?.status !== 401 && error.response?.status !== 403) {
         addToast('Failed to load admin data', 'error');
@@ -375,7 +379,16 @@ function AdminDashboard() {
       case 'bookings': return bookings;
       case 'reviews':  return reviews;
       case 'pending':  return reports.filter(r => r.status === 'pending');
-      default:         return [];
+
+      // Jobs
+      case 'jobs_total':        return adminJobs;
+      case 'jobs_active':       return adminJobs.filter(j => j.status === 'active');
+      case 'jobs_open':         return adminJobs.filter(j => j.status === 'active' && !j.selected_babysitter_id);
+      case 'jobs_in_progress':  return adminJobs.filter(j => j.status === 'in_progress');
+      case 'jobs_completed':    return adminJobs.filter(j => j.status === 'completed');
+      case 'jobs_applications': return adminJobs.filter(j => (j.application_count || 0) > 0);
+
+      default: return [];
     }
   };
 
@@ -386,7 +399,15 @@ function AdminDashboard() {
       case 'bookings': return '📅 All Bookings';
       case 'reviews':  return '⭐ All Reviews';
       case 'pending':  return '⚠️ Pending Items (Reports)';
-      default:         return 'Details';
+
+      case 'jobs_total':        return '💼 All Jobs';
+      case 'jobs_active':       return '🟢 Active Jobs';
+      case 'jobs_open':         return '📭 Open Jobs (no babysitter selected)';
+      case 'jobs_in_progress':  return '🔄 Jobs In Progress';
+      case 'jobs_completed':    return '✅ Completed Jobs';
+      case 'jobs_applications': return '📝 Jobs With Applications';
+
+      default: return 'Details';
     }
   };
 
@@ -407,6 +428,7 @@ function AdminDashboard() {
       { key: 'city',   label: 'City',   render: (u) => u.city || '—' },
       { key: 'status', label: 'Status', render: (u) => u.suspended_at ? '⛔ Suspended' : (u.is_active ? '✅ Active' : '❌ Inactive') },
     ];
+
     if (type === 'reviews') return [
       { key: 'reviewer',   label: 'Reviewer',   render: (r) => r.reviewer_name || `${r.parent_first_name || ''} ${r.parent_last_name || ''}` },
       { key: 'babysitter', label: 'Babysitter', render: (r) => r.babysitter_name || `${r.babysitter_first_name || ''} ${r.babysitter_last_name || ''}` },
@@ -414,6 +436,7 @@ function AdminDashboard() {
       { key: 'comment',    label: 'Comment',    render: (r) => r.comment || '—' },
       { key: 'date',       label: 'Date',       render: (r) => r.created_at ? new Date(r.created_at).toLocaleDateString() : '—' },
     ];
+
     if (type === 'pending') return [
       { key: 'id',       label: 'ID',       render: (r) => `#${r.id}` },
       { key: 'reporter', label: 'Reporter', render: (r) => `${r.reporter_first_name || ''} ${r.reporter_last_name || ''}` },
@@ -422,6 +445,59 @@ function AdminDashboard() {
       { key: 'severity', label: 'Severity', render: (r) => (r.severity || 'medium').toUpperCase() },
       { key: 'date',     label: 'Date',     render: (r) => r.created_at ? new Date(r.created_at).toLocaleDateString() : '—' },
     ];
+
+    // ===== Jobs: same columns for every job filter =====
+    if (type && type.startsWith('jobs_')) return [
+      { key: 'id',       label: 'ID',       render: (j) => `#${j.id}` },
+      {
+        key: 'title', label: 'Title',
+        render: (j) => j.title || '—',
+      },
+      {
+        key: 'parent', label: 'Parent',
+        render: (j) => `${j.parent_first_name || ''} ${j.parent_last_name || ''}`.trim() || '—',
+      },
+      {
+        key: 'sitter', label: 'Selected Sitter',
+        render: (j) => j.babysitter_first_name
+          ? `${j.babysitter_first_name} ${j.babysitter_last_name || ''}`.trim()
+          : '—',
+      },
+      {
+        key: 'dates', label: 'Dates',
+        render: (j) => j.start_date
+          ? `${new Date(j.start_date).toLocaleDateString()} → ${new Date(j.end_date).toLocaleDateString()}`
+          : '—',
+      },
+      {
+        key: 'rate', label: 'Rate',
+        render: (j) => `$${parseFloat(j.hourly_rate || 0).toFixed(2)}/hr`,
+      },
+      {
+        key: 'apps', label: 'Apps',
+        render: (j) => j.application_count || 0,
+      },
+      {
+        key: 'status', label: 'Status',
+        render: (j) => (
+          <span style={{
+            padding: '2px 10px', borderRadius: '10px',
+            fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase',
+            background: j.status === 'active' ? '#D1FAE5' :
+                        j.status === 'in_progress' ? '#FEF3C7' :
+                        j.status === 'completed' ? '#DBEAFE' :
+                        j.status === 'cancelled' ? '#FEE2E2' : '#F3F4F6',
+            color: j.status === 'active' ? '#065F46' :
+                   j.status === 'in_progress' ? '#92400E' :
+                   j.status === 'completed' ? '#1E40AF' :
+                   j.status === 'cancelled' ? '#991B1B' : '#374151',
+          }}>
+            {j.status || '—'}
+          </span>
+        ),
+      },
+    ];
+
     // default: bookings
     return [
       { key: 'id',     label: 'ID',     render: (b) => `#${b.id}` },
@@ -517,7 +593,6 @@ function AdminDashboard() {
             <p style={{ margin: '4px 0 0', opacity: 0.85, fontSize: '0.9rem' }}>Manage your CareNest platform</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            {/* ✅ Health chip removed */}
             <div style={{ textAlign: 'center', padding: '0 16px', borderRight: '1px solid rgba(255,255,255,0.2)' }}>
               <div style={{ fontSize: '1.4rem', fontWeight: '800' }}>{stats?.totalUsers || 0}</div>
               <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Users</div>
@@ -554,7 +629,7 @@ function AdminDashboard() {
       {/* ===== OVERVIEW TAB ===== */}
       {activeTab === 'overview' && stats && (
         <div className="dash-content">
-          {/* Quick Stats Row — all 6 cards clickable */}
+          {/* Quick Stats Row — all 6 clickable */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '20px' }}>
             {[
               { icon: '👥', label: 'Total Users',    value: stats.totalUsers, color: COLORS.purple, sub: `${stats.totalParents} parents · ${stats.totalBabysitters} sitters`, type: 'users' },
@@ -619,9 +694,57 @@ function AdminDashboard() {
             </div>
           </div>
 
-          {/* ✅ Platform Health card REMOVED */}
+          {/* User Growth */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+            <div style={cardStyle()}>
+              <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>User Growth</h3>
+              {userGrowthData.length > 0 ? (
+                <div className="bar-chart" style={{ minHeight: 140 }}>
+                  {userGrowthData.map((m, i) => {
+                    const total = m.parents + m.babysitters;
+                    const max = Math.max(...userGrowthData.map(d => d.parents + d.babysitters), 1);
+                    return (
+                      <div key={i} className="bar-item" style={{ position: 'relative' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, alignItems: 'center' }}>
+                          <div style={{ width: '100%', maxWidth: 36, height: `${Math.max(4, (m.babysitters / max) * 100)}px`, background: COLORS.purple, borderRadius: '4px 4px 0 0', transition: 'height 0.5s' }} />
+                          <div style={{ width: '100%', maxWidth: 36, height: `${Math.max(4, (m.parents / max) * 100)}px`, background: COLORS.teal, borderRadius: '0 0 4px 4px', transition: 'height 0.5s' }} />
+                        </div>
+                        <span className="bar-value">{total}</span>
+                        <span className="bar-label">{m.month.slice(5)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>No data yet</p>}
+              <div style={{ display: 'flex', gap: '16px', marginTop: '8px', fontSize: '0.75rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: COLORS.teal, display: 'inline-block' }} /> Parents</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: COLORS.purple, display: 'inline-block' }} /> Babysitters</span>
+              </div>
+            </div>
 
-          {/* Revenue by Top Babysitters + City Distribution + Monthly Bookings */}
+            <div style={cardStyle()}>
+              <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>Platform Snapshot</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {[
+                  { label: 'Total Users', value: stats?.totalUsers || 0, color: COLORS.purple },
+                  { label: 'Total Bookings', value: stats?.totalBookings || 0, color: COLORS.blue },
+                  { label: 'Completed Bookings', value: stats?.completedBookings || 0, color: COLORS.green },
+                  { label: 'Cancelled Bookings', value: stats?.cancelledBookings || 0, color: COLORS.red },
+                  { label: 'Pending Approvals', value: stats?.pendingApprovals || 0, color: COLORS.amber },
+                  { label: 'Pending Documents', value: stats?.pendingDocuments || 0, color: COLORS.orange },
+                  { label: 'Active Reports', value: reportStats.pending, color: COLORS.red },
+                  { label: 'Total Revenue', value: `$${parseFloat(stats?.totalRevenue || 0).toFixed(2)}`, color: COLORS.green },
+                ].map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < 7 ? '1px solid var(--color-border-light)' : 'none' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>{item.label}</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: '700', color: item.color }}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Top Babysitters + City Distribution + Monthly Bookings */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '20px' }}>
             {stats.topBabysitters?.length > 0 && (
               <div style={cardStyle()}>
@@ -673,21 +796,41 @@ function AdminDashboard() {
             )}
           </div>
 
-          {/* Job Stats Quick Overview */}
+          {/* ✅ Job Stats Quick Overview — NOW CLICKABLE */}
           {jobStats && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
               {[
-                { icon: '💼', label: 'Total Jobs', value: jobStats.total_jobs || 0, color: COLORS.purple },
-                { icon: '🟢', label: 'Active', value: jobStats.active_jobs || 0, color: COLORS.green },
-                { icon: '📭', label: 'Open', value: jobStats.open_jobs || 0, color: COLORS.amber },
-                { icon: '🔄', label: 'In Progress', value: jobStats.in_progress_jobs || 0, color: COLORS.blue },
-                { icon: '✅', label: 'Completed', value: jobStats.completed_jobs || 0, color: COLORS.green },
-                { icon: '📝', label: 'Applications', value: jobStats.total_applications || 0, color: COLORS.pink },
+                { icon: '💼', label: 'Total Jobs',   value: jobStats.total_jobs || 0,          color: COLORS.purple, type: 'jobs_total' },
+                { icon: '🟢', label: 'Active',       value: jobStats.active_jobs || 0,         color: COLORS.green,  type: 'jobs_active' },
+                { icon: '📭', label: 'Open',         value: jobStats.open_jobs || 0,           color: COLORS.amber,  type: 'jobs_open' },
+                { icon: '🔄', label: 'In Progress',  value: jobStats.in_progress_jobs || 0,    color: COLORS.blue,   type: 'jobs_in_progress' },
+                { icon: '✅', label: 'Completed',    value: jobStats.completed_jobs || 0,      color: COLORS.green,  type: 'jobs_completed' },
+                { icon: '📝', label: 'Applications', value: jobStats.total_applications || 0,  color: COLORS.pink,   type: 'jobs_applications' },
               ].map((s, i) => (
-                <div key={i} style={{ ...miniCardStyle, borderLeft: `3px solid ${s.color}`, alignItems: 'center', textAlign: 'center' }}>
+                <div
+                  key={i}
+                  onClick={() => setDetailModal({ open: true, type: s.type })}
+                  style={{
+                    ...miniCardStyle,
+                    borderLeft: `3px solid ${s.color}`,
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'transform 0.15s, box-shadow 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
                   <span style={{ fontSize: '1.2rem' }}>{s.icon}</span>
                   <span style={{ fontSize: '1.3rem', fontWeight: '800', color: 'var(--color-text)' }}>{s.value}</span>
                   <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{s.label}</span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginTop: 2 }}>Tap for details →</span>
                 </div>
               ))}
             </div>
