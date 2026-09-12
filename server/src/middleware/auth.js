@@ -13,15 +13,35 @@ const db = require('../config/database');
 const authenticate = async (req, res, next) => {
   try {
     const header = req.headers.authorization;
-    if (!header || !header.startsWith('Bearer ')) {
+
+    if (!header) {
       return res.status(401).json({ error: 'Access denied. No token provided.' });
     }
 
-    const token = header.split(' ')[1];
+    // Tolerate both "Bearer <token>" and "Bearer<token>"
+    let token;
+    if (header.startsWith('Bearer ')) {
+      token = header.slice(7);
+    } else if (header.startsWith('Bearer')) {
+      token = header.slice(6);
+    } else {
+      // Maybe the client sent the raw token without "Bearer"
+      token = header;
+    }
+
+    if (!token || !token.trim()) {
+      return res.status(401).json({ error: 'Access denied. Invalid Authorization header.' });
+    }
+
+    token = token.trim();
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    const result = await db.query('SELECT id, email, role, first_name, last_name, is_active FROM users WHERE id = $1', [decoded.id]);
-    
+
+    const result = await db.query(
+      'SELECT id, email, role, first_name, last_name, is_active FROM users WHERE id = $1',
+      [decoded.id]
+    );
+
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'User not found.' });
     }
