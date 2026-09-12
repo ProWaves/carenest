@@ -28,15 +28,35 @@ function Navbar() {
 
   const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
+  // ── Fetch notifications ────────────────────────────────────
+  // Re-runs whenever the user OR the current route changes.
+  // Logs the result so we can debug in the browser console.
   useEffect(() => {
-    if (user) {
-      API.get('/notifications').then((r) => {
-        setNotifications(r.data.notifications);
-        setUnreadCount(r.data.unread);
-      }).catch(() => {});
-    }
-  }, [user]);
+    if (!user?.id) return;
 
+    let cancelled = false;
+
+    const loadNotifs = () => {
+      API.get('/notifications')
+        .then((r) => {
+          if (cancelled) return;
+          const list = r.data?.notifications ?? [];
+          const unread = r.data?.unread ?? 0;
+          console.log('🔔 [Navbar] Notifications fetched:', { count: list.length, unread });
+          setNotifications(list);
+          setUnreadCount(unread);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.error('🔔 [Navbar] Notification fetch failed:', err?.response?.status, err?.response?.data || err.message);
+        });
+    };
+
+    loadNotifs();
+    return () => { cancelled = true; };
+  }, [user?.id, location.pathname]);
+
+  // ── Socket.IO live updates ─────────────────────────────────
   useEffect(() => {
     if (!socket) return;
 
@@ -50,6 +70,7 @@ function Navbar() {
     return () => socket.off('notification:new', handleNotif);
   }, [socket]);
 
+  // ── Close dropdown on outside click ────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) {
@@ -113,40 +134,34 @@ function Navbar() {
 
           {user ? (
             <>
-              {/* Dashboard - visible to all logged in users */}
               <Link to="/dashboard" className={`nav-link ${isActive('/dashboard') ? 'active' : ''}`}>
                 {user.role === 'admin' ? '🛡️ Admin' : user.role === 'parent' ? '📋 Dashboard' : '👶 Dashboard'}
               </Link>
 
-              {/* Parent: Post a Job */}
               {user.role === 'parent' && (
                 <Link to="/jobs/post" className={`nav-link ${isActive('/jobs/post') ? 'active' : ''}`}>
                   📝 Post a Job
                 </Link>
               )}
 
-              {/* Parent: My Jobs */}
               {user.role === 'parent' && (
                 <Link to="/jobs/parent" className={`nav-link ${isActive('/jobs/parent') ? 'active' : ''}`}>
                   📋 My Jobs
                 </Link>
               )}
 
-              {/* Babysitter: My Applications */}
               {user.role === 'babysitter' && (
                 <Link to="/jobs/applications" className={`nav-link ${isActive('/jobs/applications') ? 'active' : ''}`}>
                   📋 My Applications
                 </Link>
               )}
 
-              {/* Messages - only for parent and babysitter */}
               {(user.role === 'parent' || user.role === 'babysitter') && (
                 <Link to="/messages" className={`nav-link ${isActive('/messages') ? 'active' : ''}`}>
                   {t('nav.messages')}
                 </Link>
               )}
 
-              {/* Profile - only for parent and babysitter */}
               {(user.role === 'parent' || user.role === 'babysitter') && (
                 <Link to="/profile" className={`nav-link ${isActive('/profile') ? 'active' : ''}`}>
                   {t('nav.profile')}
@@ -184,10 +199,8 @@ function Navbar() {
                 )}
               </div>
 
-              {/* Logout */}
               <button onClick={handleLogout} className="nav-link btn-link">{t('nav.logout')}</button>
 
-              {/* User Avatar */}
               <div className="nav-user">
                 <div className="avatar-mini">{user.first_name?.[0]}</div>
                 <span>{user.first_name}</span>
@@ -198,7 +211,6 @@ function Navbar() {
             </>
           ) : (
             <>
-              {/* Login / Register - visible only when not logged in */}
               <Link to="/login" className={`nav-link ${isActive('/login') ? 'active' : ''}`}>
                 {t('nav.login')}
               </Link>
@@ -208,27 +220,22 @@ function Navbar() {
             </>
           )}
 
-          {/* Theme Toggle */}
           <button onClick={toggleTheme} className="theme-toggle" title={theme === 'light' ? 'Dark mode' : 'Light mode'}>
             {theme === 'light' ? '🌙' : '☀️'}
           </button>
 
-          {/* Language Switch */}
           <div className="lang-switch">
             <button className={`lang-btn ${lang === 'en' ? 'active' : ''}`} onClick={() => changeLanguage('en')}>EN</button>
             <button className={`lang-btn ${lang === 'fr' ? 'active' : ''}`} onClick={() => changeLanguage('fr')}>FR</button>
           </div>
 
-          {/* Mobile Menu Toggle */}
           <button className="mobile-menu-btn" onClick={() => setMobileOpen(!mobileOpen)}>
             {mobileOpen ? String.fromCodePoint(10005) : String.fromCodePoint(9776)}
           </button>
         </div>
       </div>
 
-      {/* Mobile Menu */}
       <div className={`mobile-menu ${mobileOpen ? 'open' : ''}`}>
-        {/* Role-based "Find" link */}
         {user?.role === 'babysitter' ? (
           <Link to="/jobs" className="nav-link" onClick={() => setMobileOpen(false)}>
             🔍 Find Jobs
@@ -245,21 +252,18 @@ function Navbar() {
               {user.role === 'admin' ? '🛡️ Admin' : user.role === 'parent' ? '📋 Dashboard' : '👶 Dashboard'}
             </Link>
 
-            {/* Parent: Post a Job */}
             {user.role === 'parent' && (
               <Link to="/jobs/post" className="nav-link" onClick={() => setMobileOpen(false)}>
                 📝 Post a Job
               </Link>
             )}
 
-            {/* Parent: My Jobs */}
             {user.role === 'parent' && (
               <Link to="/jobs/parent" className="nav-link" onClick={() => setMobileOpen(false)}>
                 📋 My Jobs
               </Link>
             )}
 
-            {/* Babysitter: My Applications */}
             {user.role === 'babysitter' && (
               <Link to="/jobs/applications" className="nav-link" onClick={() => setMobileOpen(false)}>
                 📋 My Applications

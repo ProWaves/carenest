@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
+import { useLocation } from 'react-router-dom';
 import { playNotificationSound } from '../utils/sounds';
 import API from '../api/axios';
 
@@ -10,28 +11,23 @@ function Header() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { socket } = useSocket();
+  const location = useLocation();
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const notifRef = useRef(null);
 
-  // ============================================
-  // REAL-TIME CLOCK STATE
-  // ============================================
   const [currentTime, setCurrentTime] = useState(new Date());
-
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
-  // Update clock every second
+  // Live clock
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
-
     return () => clearInterval(timer);
   }, []);
 
-  // Format date and time
   const formatDate = (date) => {
     return date.toLocaleDateString('en-US', {
       weekday: 'short',
@@ -57,19 +53,33 @@ function Header() {
 
   const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
-  // Fetch notifications
+  // ── Fetch notifications ────────────────────────────────────
   useEffect(() => {
-    if (user) {
+    if (!user?.id) return;
+
+    let cancelled = false;
+
+    const loadNotifs = () => {
       API.get('/notifications')
         .then((r) => {
-          setNotifications(r.data.notifications);
-          setUnreadCount(r.data.unread);
+          if (cancelled) return;
+          const list = r.data?.notifications ?? [];
+          const unread = r.data?.unread ?? 0;
+          console.log('🔔 [Header] Notifications fetched:', { count: list.length, unread });
+          setNotifications(list);
+          setUnreadCount(unread);
         })
-        .catch(() => {});
-    }
-  }, [user]);
+        .catch((err) => {
+          if (cancelled) return;
+          console.error('🔔 [Header] Notification fetch failed:', err?.response?.status, err?.response?.data || err.message);
+        });
+    };
 
-  // Socket notifications
+    loadNotifs();
+    return () => { cancelled = true; };
+  }, [user?.id, location.pathname]);
+
+  // ── Socket.IO live updates ─────────────────────────────────
   useEffect(() => {
     if (!socket) return;
 
@@ -83,7 +93,7 @@ function Header() {
     return () => socket.off('notification:new', handleNotif);
   }, [socket]);
 
-  // Click outside to close
+  // ── Close dropdown on outside click ────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) {
@@ -115,7 +125,6 @@ function Header() {
   return (
     <header className="app-header">
       <div className="header-left">
-        {/* Clock Display */}
         <div className="header-clock">
           <div className="header-clock-time">{formatTime(currentTime)}</div>
           <div className="header-clock-date">{formatDate(currentTime)}</div>
@@ -123,12 +132,10 @@ function Header() {
       </div>
 
       <div className="header-right">
-        {/* Theme Toggle */}
         <button onClick={toggleTheme} className="header-btn" title={theme === 'light' ? 'Dark mode' : 'Light mode'}>
           {theme === 'light' ? '🌙' : '☀️'}
         </button>
 
-        {/* Notifications */}
         {user && (
           <div style={{ position: 'relative' }} ref={notifRef}>
             <button
@@ -170,7 +177,6 @@ function Header() {
           </div>
         )}
 
-        {/* User Avatar */}
         {user && (
           <div className="header-user">
             <div className="header-avatar">
