@@ -22,7 +22,18 @@ function Home() {
   return (
     <div className="home-page">
       {/* HERO SECTION */}
-      <div style={{ background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.purple}, ${COLORS.primaryLight})`, borderRadius: 'var(--radius-lg)', padding: '48px 40px 40px', marginBottom: '32px', color: '#fff', position: 'relative', overflow: 'hidden' }}>
+      <div style={{
+  background: `
+  linear-gradient(135deg, rgba(79,70,229,0.85), rgba(124,58,237,0.85), rgba(99,102,241,0.85)),
+  url('/babysitter.jpg') center 40% / 110% no-repeat
+`,
+  borderRadius: 'var(--radius-lg)',
+  padding: '48px 40px 40px',
+  marginBottom: '32px',
+  color: '#fff',
+  position: 'relative',
+  overflow: 'hidden',
+}}>
         <div style={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
         <div style={{ position: 'absolute', bottom: -60, right: 80, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
         <div style={{ position: 'absolute', top: 20, left: '40%', width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }} />
@@ -44,15 +55,9 @@ function Home() {
             </div>
           </div>
           <div style={{ flex: '0 0 320px', display: 'flex', justifyContent: 'center' }}>
-            <div style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', padding: '24px', boxShadow: 'var(--shadow-lg)', width: 280, color: 'var(--color-text)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: 14 }}>
-                <div style={{ width: 48, height: 48, borderRadius: '50%', background: `linear-gradient(135deg, ${COLORS.teal}, ${COLORS.green})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '0.95rem' }}>SM</div>
-                <div><div style={{ fontWeight: '700', fontSize: '0.95rem' }}>Sarah M.</div><div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Verified Babysitter</div></div>
-              </div>
-              <div style={{ color: COLORS.amber, fontSize: '0.9rem', marginBottom: 8 }}>{String.fromCodePoint(9733)}{String.fromCodePoint(9733)}{String.fromCodePoint(9733)}{String.fromCodePoint(9733)}{String.fromCodePoint(9733)} 5.0</div>
-              <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.88rem', marginBottom: 12, lineHeight: 1.5 }}>&ldquo;I love caring for children and have 5 years of experience.&rdquo;</p>
-              <div style={{ fontWeight: '800', fontSize: '1.2rem', color: COLORS.primary }}>$15 <span style={{ fontSize: '0.8rem', fontWeight: '500', color: 'var(--color-text-muted)' }}>/hr</span></div>
-            </div>
+
+
+
           </div>
         </div>
       </div>

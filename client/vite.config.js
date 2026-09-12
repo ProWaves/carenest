@@ -1,30 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { copyFileSync, mkdirSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import fs from 'fs';
+import path from 'path';
 
 export default defineConfig({
   plugins: [
     react(),
     {
-      name: 'ensure-redirects',
+      name: 'copy-redirects',
       closeBundle() {
-        const src = resolve(__dirname, 'public/_redirects');
-        const destDir = resolve(__dirname, 'dist');
-        const dest = resolve(destDir, '_redirects');
-        
-        // Ensure dist exists
-        if (!existsSync(destDir)) {
-          mkdirSync(destDir, { recursive: true });
-        }
-        
-        // Copy _redirects to dist
-        if (existsSync(src)) {
-          copyFileSync(src, dest);
+        const src = path.resolve(__dirname, 'public/_redirects');
+        const dest = path.resolve(__dirname, 'dist/_redirects');
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest);
           console.log('✅ _redirects copied to dist');
         } else {
-          // Create _redirects directly in dist
-          const fs = require('fs');
           fs.writeFileSync(dest, '/* /index.html 200');
           console.log('✅ _redirects created in dist');
         }

@@ -1,10 +1,3 @@
-// ==========================================================================
-// main.jsx — Application Entry Point
-// ==========================================================================
-// Mounts the React app inside BrowserRouter with global providers:
-// AuthProvider (user session), LanguageProvider (i18n), ToastProvider (notifications)
-// ==========================================================================
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

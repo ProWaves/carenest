@@ -2,6 +2,7 @@
 const express = require('express');
 const db = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { sendPush } = require('../services/fcm');
 
 const router = express.Router();
 let io = null;
@@ -55,7 +56,7 @@ router.put('/read-all', authenticate, async (req, res) => {
 });
 
 // ============================================
-// EXPORT createNotification helper
+// createNotification helper (used by other routes)
 // ============================================
 const createNotification = async (userId, type, title, message, link) => {
   try {
@@ -66,8 +67,27 @@ const createNotification = async (userId, type, title, message, link) => {
     const notif = result.rows[0];
     console.log(`📨 Notification sent to user ${userId}: ${title}`);
 
+    // Socket.IO live update (if user is connected)
     if (io) {
       io.to(`user_${userId}`).emit('notification:new', notif);
+    }
+
+    // Push notification (works even if app is closed)
+    try {
+      const userRow = await db.query(
+        'SELECT fcm_token FROM users WHERE id = $1',
+        [userId]
+      );
+      const fcmToken = userRow.rows[0]?.fcm_token;
+      if (fcmToken) {
+        sendPush(fcmToken, {
+          title,
+          body: message,
+          data: { link: link || '/', type },
+        }).catch(console.error);
+      }
+    } catch (fcmError) {
+      console.error('FCM lookup error:', fcmError.message);
     }
   } catch (error) {
     console.error('Create notification error:', error);

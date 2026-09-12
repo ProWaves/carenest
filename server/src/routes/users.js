@@ -1,12 +1,6 @@
 // ==========================================================================
 // User Routes — /api/users
 // ==========================================================================
-// GET  /profile/:id  — public profile for any user
-// PUT  /profile      — update own profile (authenticated)
-// PUT  /password     — change own password (authenticated)
-// POST /avatar       — upload a profile picture (authenticated)
-// ==========================================================================
-
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../config/database');
@@ -16,7 +10,6 @@ const upload = require('../middleware/upload');
 const router = express.Router();
 
 // GET /api/users/profile/:id
-// Returns public info for any user by ID.
 router.get('/profile/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -34,7 +27,6 @@ router.get('/profile/:id', async (req, res) => {
 });
 
 // PUT /api/users/profile
-// Updates own profile fields. Only provided fields are changed (COALESCE).
 router.put('/profile', authenticate, async (req, res) => {
   try {
     const { first_name, last_name, phone, city, language, gender } = req.body;
@@ -58,7 +50,6 @@ router.put('/profile', authenticate, async (req, res) => {
 });
 
 // PUT /api/users/password
-// Updates password after verifying the current one.
 router.put('/password', authenticate, async (req, res) => {
   try {
     const { current_password, new_password } = req.body;
@@ -76,7 +67,6 @@ router.put('/password', authenticate, async (req, res) => {
 });
 
 // POST /api/users/avatar
-// Uploads an avatar image via multipart/form-data. Saves to /uploads/.
 router.post('/avatar', authenticate, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) {
@@ -86,6 +76,25 @@ router.post('/avatar', authenticate, upload.single('avatar'), async (req, res) =
     await db.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [avatarUrl, req.user.id]);
     res.json({ avatar_url: avatarUrl });
   } catch (error) {
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
+// POST /api/users/fcm-token
+// Stores the device's FCM token so the backend can push to this user.
+router.post('/fcm-token', authenticate, async (req, res) => {
+  try {
+    const { fcm_token } = req.body;
+    if (!fcm_token) {
+      return res.status(400).json({ error: 'fcm_token is required.' });
+    }
+    await db.query(
+      'UPDATE users SET fcm_token = $1 WHERE id = $2',
+      [fcm_token, req.user.id]
+    );
+    res.json({ message: 'FCM token registered.' });
+  } catch (error) {
+    console.error('Register FCM error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
