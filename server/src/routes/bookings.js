@@ -10,7 +10,7 @@ router.get('/', authenticate, async (req, res) => {
   try {
     console.log('🔍 Fetching bookings for user:', req.user.id);
     console.log('👤 User role:', req.user.role);
-    
+
     let sql, params;
     if (req.user.role === 'parent') {
       sql = `
@@ -60,11 +60,9 @@ router.get('/', authenticate, async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('❌ Get bookings error:', error);
-    console.error('❌ Error stack:', error.stack);
-    res.status(500).json({ 
-      error: 'Server error.', 
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    res.status(500).json({
+      error: 'Server error.',
+      message: error.message
     });
   }
 });
@@ -74,7 +72,15 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
   try {
     const { babysitter_id, child_id, start_date, end_date, start_time, end_time, notes, slot_ids } = req.body;
 
-    // Check if parent is suspended
+    // ✅ NEW: validate date/time presence before doing anything else
+    if (!start_date || !end_date || !start_time || !end_time) {
+      return res.status(400).json({
+        error: 'Missing required date/time fields.',
+        received: { start_date, end_date, start_time, end_time }
+      });
+    }
+
+    // ✅ NEW: validate parent is not suspended
     const parentCheck = await db.query(
       'SELECT suspended_at FROM users WHERE id = $1',
       [req.user.id]
@@ -107,6 +113,14 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
     // Calculate total
     const startDateTime = new Date(`${start_date}T${start_time}`);
     const endDateTime = new Date(`${end_date}T${end_time}`);
+
+    if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+      return res.status(400).json({
+        error: 'Invalid date or time format.',
+        received: { start_date, end_date, start_time, end_time }
+      });
+    }
+
     const totalHours = Math.max(1, (endDateTime - startDateTime) / (1000 * 60 * 60));
     const totalAmount = totalHours * hourlyRate;
 
@@ -114,7 +128,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 
     // Begin transaction
     const client = await db.pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
@@ -172,9 +186,6 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
 
-    console.log(`🔄 Cancelling booking #${id}...`);
-
-    // Get the booking
     const booking = await db.query('SELECT * FROM bookings WHERE id = $1', [id]);
     if (booking.rows.length === 0) {
       return res.status(404).json({ error: 'Booking not found.' });
@@ -182,16 +193,12 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
 
     const b = booking.rows[0];
 
-    // Check if booking can be cancelled
     if (b.status === 'completed') {
       return res.status(400).json({ error: 'Cannot cancel a completed booking.' });
     }
-
     if (b.status === 'cancelled') {
       return res.status(400).json({ error: 'Booking is already cancelled.' });
     }
-
-    // Allow BOTH parent AND babysitter to cancel
     if (req.user.role === 'parent' && b.parent_id !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized.' });
     }
@@ -199,22 +206,16 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized.' });
     }
 
-    // Check if user is suspended
-    const userCheck = await db.query(
-      'SELECT suspended_at FROM users WHERE id = $1',
-      [req.user.id]
-    );
+    const userCheck = await db.query('SELECT suspended_at FROM users WHERE id = $1', [req.user.id]);
     if (userCheck.rows[0]?.suspended_at) {
       return res.status(403).json({ error: 'Your account is suspended.' });
     }
 
-    // Begin transaction to cancel booking AND free slots
     const client = await db.pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
-      // 1. Update booking status to cancelled
       const result = await client.query(
         `UPDATE bookings 
          SET status = 'cancelled', 
@@ -226,9 +227,6 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
         [reason || 'No reason provided', req.user.id, id]
       );
 
-      console.log(`✅ Booking #${id} cancelled by user ${req.user.id}`);
-
-      // 2. FREE ALL SLOTS BOOKED BY THIS BOOKING
       const freedSlots = await client.query(
         `UPDATE babysitter_availability 
          SET is_booked = false, 
@@ -239,11 +237,8 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
         [id]
       );
 
-      console.log(`✅ Freed ${freedSlots.rows.length} slots for cancelled booking #${id}`);
-
       await client.query('COMMIT');
 
-      // Notify the other party
       const otherPartyId = req.user.id === b.parent_id ? b.babysitter_id : b.parent_id;
       await createNotification(
         otherPartyId,
@@ -260,7 +255,6 @@ router.put('/:id/cancel', authenticate, async (req, res) => {
       });
     } catch (err) {
       await client.query('ROLLBACK');
-      console.error('❌ Error in cancellation transaction:', err);
       throw err;
     } finally {
       client.release();
@@ -292,11 +286,9 @@ router.put('/:id/status', authenticate, async (req, res) => {
     if (b.status === 'completed') {
       return res.status(400).json({ error: 'Cannot change status of a completed booking.' });
     }
-
     if (b.status === 'cancelled') {
       return res.status(400).json({ error: 'Cannot change status of a cancelled booking.' });
     }
-
     if (req.user.role === 'parent' && b.parent_id !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized.' });
     }
@@ -304,10 +296,7 @@ router.put('/:id/status', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Unauthorized.' });
     }
 
-    const userCheck = await db.query(
-      'SELECT suspended_at FROM users WHERE id = $1',
-      [req.user.id]
-    );
+    const userCheck = await db.query('SELECT suspended_at FROM users WHERE id = $1', [req.user.id]);
     if (userCheck.rows[0]?.suspended_at) {
       return res.status(403).json({ error: 'Your account is suspended.' });
     }
@@ -471,15 +460,11 @@ router.get('/parent-reviews', authenticate, async (req, res) => {
   }
 });
 
-// ============================================
-// DELETE /api/bookings/:id - Delete booking (only if cancelled or completed)
-// Works for both parents and babysitters
-// ============================================
+// DELETE /api/bookings/:id
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get the booking
     const booking = await db.query('SELECT * FROM bookings WHERE id = $1', [id]);
     if (booking.rows.length === 0) {
       return res.status(404).json({ error: 'Booking not found.' });
@@ -487,25 +472,21 @@ router.delete('/:id', authenticate, async (req, res) => {
 
     const b = booking.rows[0];
 
-    // Check if user is authorized (parent OR babysitter who owns the booking)
     if (b.parent_id !== req.user.id && b.babysitter_id !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized. You can only delete your own bookings.' });
     }
 
-    // Only allow deletion of cancelled or completed bookings
     if (b.status !== 'cancelled' && b.status !== 'completed') {
-      return res.status(400).json({ 
-        error: 'Only cancelled or completed bookings can be deleted.' 
+      return res.status(400).json({
+        error: 'Only cancelled or completed bookings can be deleted.'
       });
     }
 
-    // Begin transaction to also free any slots if needed
     const client = await db.pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
-      // Free any slots booked by this booking (if any)
       await client.query(
         `UPDATE babysitter_availability 
          SET is_booked = false, 
@@ -515,18 +496,11 @@ router.delete('/:id', authenticate, async (req, res) => {
         [id]
       );
 
-      // Delete the booking
       await client.query('DELETE FROM bookings WHERE id = $1', [id]);
 
       await client.query('COMMIT');
 
-      console.log(`🗑️ Booking #${id} deleted by user ${req.user.id}`);
-      console.log(`✅ Freed any slots associated with booking #${id}`);
-
-      res.json({ 
-        message: 'Booking deleted successfully.',
-        bookingId: id
-      });
+      res.json({ message: 'Booking deleted successfully.', bookingId: id });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
