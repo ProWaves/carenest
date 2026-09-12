@@ -50,22 +50,24 @@ Type "help" to see all available commands, or ask me anything!
     setLoading(true);
 
     try {
-      const res = await API.post('/admin/chat', { message: text });
-      
-      // Format the response with proper line breaks
+      // ✅ FIXED: was '/admin/chat', now '/admin/chatbot/chat'
+      const res = await API.post('/admin/chatbot/chat', { message: text });
+
       const botMessage = {
         id: Date.now() + 1,
-        text: res.data.response,
+        text: res.data.response || 'No response',
         sender: 'bot',
         timestamp: new Date(),
         type: res.data.type || 'info'
       };
-      
+
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
-        text: '❌ Error: ' + (error.response?.data?.message || 'Failed to process command. Please try again.'),
+        text: '❌ Error: ' + (error.response?.data?.error
+              || error.response?.data?.message
+              || 'Failed to process command. Please try again.'),
         sender: 'bot',
         timestamp: new Date(),
         type: 'error'
@@ -229,12 +231,12 @@ Type "help" to see all available commands, or ask me anything!
           </div>
           <div>
             <strong style={{ fontSize: '16px', display: 'block' }}>Admin Assistant</strong>
-            <div style={{ 
-              fontSize: '11px', 
-              opacity: 0.8, 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '4px' 
+            <div style={{
+              fontSize: '11px',
+              opacity: 0.8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
             }}>
               <span style={{
                 width: '8px',
@@ -283,9 +285,9 @@ Type "help" to see all available commands, or ask me anything!
         {messages.map(renderMessage)}
         {loading && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '12px' }}>
-            <div style={{ 
-              padding: '12px 16px', 
-              background: 'var(--bg-card, #ffffff)', 
+            <div style={{
+              padding: '12px 16px',
+              background: 'var(--bg-card, #ffffff)',
               borderRadius: '16px 16px 16px 4px',
               border: '1px solid var(--border-color, #e2e8f0)',
               display: 'flex',
@@ -351,11 +353,11 @@ Type "help" to see all available commands, or ask me anything!
             padding: '0 20px',
             borderRadius: '12px',
             border: 'none',
-            background: loading || !input.trim() 
-              ? 'var(--border-color, #e2e8f0)' 
+            background: loading || !input.trim()
+              ? 'var(--border-color, #e2e8f0)'
               : 'linear-gradient(135deg, #6366f1, #7c3aed)',
-            color: loading || !input.trim() 
-              ? 'var(--text-muted, #94a3b8)' 
+            color: loading || !input.trim()
+              ? 'var(--text-muted, #94a3b8)'
               : 'white',
             cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
             opacity: loading || !input.trim() ? 0.6 : 1,
@@ -407,12 +409,12 @@ Type "help" to see all available commands, or ask me anything!
         }
 
         @keyframes slideUpChat {
-          from { 
-            opacity: 0; 
+          from {
+            opacity: 0;
             transform: translateY(20px) scale(0.95);
           }
-          to { 
-            opacity: 1; 
+          to {
+            opacity: 1;
             transform: translateY(0) scale(1);
           }
         }

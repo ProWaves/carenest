@@ -5,6 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../components/Toast';
 import AdminLocationManager from '../components/admin/AdminLocationManager';
 import StatDetailModal from '../components/StatDetailModal';
+import AdminChatbot from '../components/admin/AdminChatbot';   // 👈 ADDED
 
 const COLORS = {
   purple: '#6366f1', green: '#10b981', amber: '#f59e0b', red: '#ef4444',
@@ -122,7 +123,6 @@ function AdminDashboard() {
   const [notifForm, setNotifForm] = useState({ title: '', message: '', target_role: 'all', target_user_id: '' });
   const [showNotifModal, setShowNotifModal] = useState(false);
 
-  // ✅ Drill-down modal state
   const [detailModal, setDetailModal] = useState({ open: false, type: null });
 
   useEffect(() => {
@@ -155,7 +155,6 @@ function AdminDashboard() {
       setReviews(reviewsRes.data);
       setParentReviews(parentReviewsRes.data);
       setRefunds(refundsRes.data);
-      // ✅ Safely extract jobs array from adminJobsRes (backend may return { jobs: [...] } or [...])
       const jobsData = Array.isArray(adminJobsRes.data)
         ? adminJobsRes.data
         : (adminJobsRes.data?.jobs || []);
@@ -174,9 +173,9 @@ function AdminDashboard() {
       const [appsRes, statsRes] = await Promise.all([API.get('/admin/babysitters'), API.get('/admin/stats')]);
       setApplications(appsRes.data); setStats(statsRes.data);
       addToast(`Babysitter ${status}!`, 'success');
-    } catch (err) { 
+    } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        addToast(err.response?.data?.error || 'Error', 'error'); 
+        addToast(err.response?.data?.error || 'Error', 'error');
       }
     }
   };
@@ -184,9 +183,9 @@ function AdminDashboard() {
   const handleDeleteBabysitter = async (id) => {
     if (!window.confirm('Permanently remove this babysitter?')) return;
     try { await API.delete(`/admin/babysitters/${id}`); addToast('Removed!', 'success'); loadAllData(); }
-    catch (err) { 
+    catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        addToast('Error removing babysitter', 'error'); 
+        addToast('Error removing babysitter', 'error');
       }
     }
   };
@@ -199,9 +198,9 @@ function AdminDashboard() {
       setUsers(usersRes.data); setStats(statsRes.data);
       setSuspensionReason(''); setShowUserModal(false);
       addToast(suspend ? 'User suspended!' : 'User restored!', 'success');
-    } catch (err) { 
+    } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        addToast(err.response?.data?.error || 'Error', 'error'); 
+        addToast(err.response?.data?.error || 'Error', 'error');
       }
     }
   };
@@ -213,9 +212,9 @@ function AdminDashboard() {
       setShowReportModal(false);
       setReportAction({ status: '', admin_notes: '', admin_action: '', refund_status: '', refund_amount: '', warning_message: '' });
       loadAllData();
-    } catch (err) { 
+    } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        addToast(err.response?.data?.error || 'Error', 'error'); 
+        addToast(err.response?.data?.error || 'Error', 'error');
       }
     }
   };
@@ -232,9 +231,9 @@ function AdminDashboard() {
       setNotifForm({ title: '', message: '', target_role: 'all', target_user_id: '' });
       setShowNotifModal(false);
       loadAllData();
-    } catch (err) { 
+    } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        addToast(err.response?.data?.error || 'Error sending notification', 'error'); 
+        addToast(err.response?.data?.error || 'Error sending notification', 'error');
       }
     }
   };
@@ -245,9 +244,9 @@ function AdminDashboard() {
       await API.delete(`/jobs/admin/jobs/${jobId}`);
       addToast('Job deleted!', 'success');
       loadAllData();
-    } catch (err) { 
+    } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        addToast(err.response?.data?.error || 'Error', 'error'); 
+        addToast(err.response?.data?.error || 'Error', 'error');
       }
     }
   };
@@ -262,9 +261,9 @@ function AdminDashboard() {
         const remaining = documents.filter(d => d.profile_id === doc.profile_id && d.id !== id);
         if (remaining.length === 0) autoApproveBabysitter(doc.profile_id);
       }
-    } catch (err) { 
+    } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        addToast('Error verifying document', 'error'); 
+        addToast('Error verifying document', 'error');
       }
     }
   };
@@ -275,9 +274,9 @@ function AdminDashboard() {
       await API.post(`/admin/documents/${currentDocId}/request-revision`, { revision_notes: revisionNotes });
       addToast('Revision requested!', 'success'); setRevisionNotes(''); setShowRevisionModal(false);
       const res = await API.get('/admin/documents'); setDocuments(res.data);
-    } catch (err) { 
+    } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) {
-        addToast('Error', 'error'); 
+        addToast('Error', 'error');
       }
     }
   };
@@ -369,9 +368,6 @@ function AdminDashboard() {
   const getFilteredRefunds = () => { let f = refunds; if (filters.refundStatus !== 'all') f = f.filter(r => r.refund_status === filters.refundStatus); if (searchTerm) { const s = searchTerm.toLowerCase(); f = f.filter(r => r.reporter_name?.toLowerCase().includes(s) || r.reported_name?.toLowerCase().includes(s) || r.reason?.toLowerCase().includes(s)); } return f; };
   const getReportStats = () => ({ total: reports.length, pending: reports.filter(r => r.status === 'pending').length, reviewed: reports.filter(r => r.status === 'reviewed').length, resolved: reports.filter(r => r.status === 'resolved').length, dismissed: reports.filter(r => r.status === 'dismissed').length });
 
-  // ============================================
-  // DRILL-DOWN MODAL HELPERS
-  // ============================================
   const getDetailRows = (type) => {
     switch (type) {
       case 'users':    return users;
@@ -380,7 +376,6 @@ function AdminDashboard() {
       case 'reviews':  return reviews;
       case 'pending':  return reports.filter(r => r.status === 'pending');
 
-      // Jobs
       case 'jobs_total':        return adminJobs;
       case 'jobs_active':       return adminJobs.filter(j => j.status === 'active');
       case 'jobs_open':         return adminJobs.filter(j => j.status === 'active' && !j.selected_babysitter_id);
@@ -446,40 +441,15 @@ function AdminDashboard() {
       { key: 'date',     label: 'Date',     render: (r) => r.created_at ? new Date(r.created_at).toLocaleDateString() : '—' },
     ];
 
-    // ===== Jobs: same columns for every job filter =====
     if (type && type.startsWith('jobs_')) return [
       { key: 'id',       label: 'ID',       render: (j) => `#${j.id}` },
-      {
-        key: 'title', label: 'Title',
-        render: (j) => j.title || '—',
-      },
-      {
-        key: 'parent', label: 'Parent',
-        render: (j) => `${j.parent_first_name || ''} ${j.parent_last_name || ''}`.trim() || '—',
-      },
-      {
-        key: 'sitter', label: 'Selected Sitter',
-        render: (j) => j.babysitter_first_name
-          ? `${j.babysitter_first_name} ${j.babysitter_last_name || ''}`.trim()
-          : '—',
-      },
-      {
-        key: 'dates', label: 'Dates',
-        render: (j) => j.start_date
-          ? `${new Date(j.start_date).toLocaleDateString()} → ${new Date(j.end_date).toLocaleDateString()}`
-          : '—',
-      },
-      {
-        key: 'rate', label: 'Rate',
-        render: (j) => `$${parseFloat(j.hourly_rate || 0).toFixed(2)}/hr`,
-      },
-      {
-        key: 'apps', label: 'Apps',
-        render: (j) => j.application_count || 0,
-      },
-      {
-        key: 'status', label: 'Status',
-        render: (j) => (
+      { key: 'title',    label: 'Title',    render: (j) => j.title || '—' },
+      { key: 'parent',   label: 'Parent',   render: (j) => `${j.parent_first_name || ''} ${j.parent_last_name || ''}`.trim() || '—' },
+      { key: 'sitter',   label: 'Selected Sitter', render: (j) => j.babysitter_first_name ? `${j.babysitter_first_name} ${j.babysitter_last_name || ''}`.trim() : '—' },
+      { key: 'dates',    label: 'Dates',    render: (j) => j.start_date ? `${new Date(j.start_date).toLocaleDateString()} → ${new Date(j.end_date).toLocaleDateString()}` : '—' },
+      { key: 'rate',     label: 'Rate',     render: (j) => `$${parseFloat(j.hourly_rate || 0).toFixed(2)}/hr` },
+      { key: 'apps',     label: 'Apps',     render: (j) => j.application_count || 0 },
+      { key: 'status',   label: 'Status',   render: (j) => (
           <span style={{
             padding: '2px 10px', borderRadius: '10px',
             fontSize: '0.7rem', fontWeight: '600', textTransform: 'uppercase',
@@ -494,11 +464,9 @@ function AdminDashboard() {
           }}>
             {j.status || '—'}
           </span>
-        ),
-      },
+        ) },
     ];
 
-    // default: bookings
     return [
       { key: 'id',     label: 'ID',     render: (b) => `#${b.id}` },
       { key: 'parent', label: 'Parent', render: (b) => `${b.parent_first_name || b.parent_name || ''} ${b.parent_last_name || ''}`.trim() || '—' },
@@ -615,9 +583,9 @@ function AdminDashboard() {
       {/* TABS */}
       <div className="dash-tabs">
         {tabs.map(tab => (
-          <button 
-            key={tab.id} 
-            className={`dash-tab ${activeTab === tab.id ? 'active' : ''}`} 
+          <button
+            key={tab.id}
+            className={`dash-tab ${activeTab === tab.id ? 'active' : ''}`}
             onClick={() => handleTabChange(tab.id)}
           >
             {tab.label}
@@ -629,7 +597,6 @@ function AdminDashboard() {
       {/* ===== OVERVIEW TAB ===== */}
       {activeTab === 'overview' && stats && (
         <div className="dash-content">
-          {/* Quick Stats Row — all 6 clickable */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '20px' }}>
             {[
               { icon: '👥', label: 'Total Users',    value: stats.totalUsers, color: COLORS.purple, sub: `${stats.totalParents} parents · ${stats.totalBabysitters} sitters`, type: 'users' },
@@ -656,9 +623,7 @@ function AdminDashboard() {
             ))}
           </div>
 
-          {/* Charts Row */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-            {/* Booking Status Donut */}
             <div style={cardStyle()}>
               <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>Booking Status</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -675,13 +640,11 @@ function AdminDashboard() {
               </div>
             </div>
 
-            {/* Rating Distribution */}
             <div style={cardStyle()}>
               <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>Rating Distribution</h3>
               <HorizontalBarChart data={ratingDistData} />
             </div>
 
-            {/* Revenue Trend Sparkline */}
             <div style={cardStyle()}>
               <h3 style={{ margin: '0 0 6px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>Revenue (30d)</h3>
               <div style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--color-text)', marginBottom: '8px' }}>
@@ -694,7 +657,6 @@ function AdminDashboard() {
             </div>
           </div>
 
-          {/* User Growth */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px', marginBottom: '20px' }}>
             <div style={cardStyle()}>
               <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>User Growth</h3>
@@ -744,7 +706,6 @@ function AdminDashboard() {
             </div>
           </div>
 
-          {/* Top Babysitters + City Distribution + Monthly Bookings */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '20px' }}>
             {stats.topBabysitters?.length > 0 && (
               <div style={cardStyle()}>
@@ -796,7 +757,6 @@ function AdminDashboard() {
             )}
           </div>
 
-          {/* ✅ Job Stats Quick Overview — NOW CLICKABLE */}
           {jobStats && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
               {[
@@ -836,7 +796,6 @@ function AdminDashboard() {
             </div>
           )}
 
-          {/* Recent Activity */}
           {stats.recentActivity?.length > 0 && (
             <div style={cardStyle()}>
               <h3 style={{ margin: '0 0 14px', fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text)' }}>Recent Activity</h3>
@@ -1651,7 +1610,6 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* ✅ DRILL-DOWN MODAL */}
       <StatDetailModal
         isOpen={detailModal.open}
         onClose={() => setDetailModal({ open: false, type: null })}
@@ -1661,6 +1619,9 @@ function AdminDashboard() {
         rows={getDetailRows(detailModal.type)}
         emptyText="No records in this category"
       />
+
+      {/* 🛡️ Admin Chatbot floating button */}
+      <AdminChatbot />
     </div>
   );
 }
