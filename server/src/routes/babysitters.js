@@ -90,14 +90,13 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/babysitters/nearby - Find closest babysitters with live location
-// Updated to respect admin controls (share_location must be true)
+// GET /api/babysitters/nearby
 router.get('/nearby', async (req, res) => {
   try {
     const { lat, lng, radius = 10, limit = 20 } = req.query;
-    
+
     if (!lat || !lng) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Latitude and longitude required.',
         message: 'Please provide lat and lng parameters'
       });
@@ -108,14 +107,9 @@ router.get('/nearby', async (req, res) => {
     const radiusKm = parseFloat(radius);
 
     if (isNaN(latNum) || isNaN(lngNum)) {
-      return res.status(400).json({ 
-        error: 'Invalid latitude or longitude values.' 
-      });
+      return res.status(400).json({ error: 'Invalid latitude or longitude values.' });
     }
 
-    console.log(`📍 Finding babysitters near (${latNum}, ${lngNum}) within ${radiusKm}km`);
-
-    // Check if user_locations table exists
     const tableCheck = await db.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -124,7 +118,6 @@ router.get('/nearby', async (req, res) => {
     `);
 
     if (!tableCheck.rows[0].exists) {
-      console.warn('⚠️ user_locations table does not exist yet');
       return res.json({
         babysitters: [],
         userLocation: { lat: latNum, lng: lngNum },
@@ -134,30 +127,12 @@ router.get('/nearby', async (req, res) => {
       });
     }
 
-    // Enhanced query with distance calculation and location freshness
-    // Only show babysitters where:
-    // - is_sharing = true (babysitter enabled sharing)
-    // - share_location = true (admin has not disabled sharing)
     const result = await db.query(`
       WITH nearby_babysitters AS (
         SELECT 
-          u.id, 
-          u.first_name, 
-          u.last_name, 
-          u.city, 
-          u.language, 
-          u.gender, 
-          u.avatar_url,
-          u.is_active,
-          bp.hourly_rate, 
-          bp.experience_years, 
-          bp.is_verified, 
-          bp.skills,
-          bp.share_location,
-          ul.latitude, 
-          ul.longitude, 
-          ul.location_updated_at,
-          ul.is_sharing,
+          u.id, u.first_name, u.last_name, u.city, u.language, u.gender, u.avatar_url,
+          u.is_active, bp.hourly_rate, bp.experience_years, bp.is_verified, bp.skills,
+          bp.share_location, ul.latitude, ul.longitude, ul.location_updated_at, ul.is_sharing,
           (
             6371 * acos(
               cos(radians($1)) * cos(radians(ul.latitude)) *
@@ -175,7 +150,7 @@ router.get('/nearby', async (req, res) => {
           AND u.suspended_at IS NULL
           AND bp.status = 'approved'
           AND ul.is_sharing = true
-          AND bp.share_location = true  -- Admin must have enabled this
+          AND bp.share_location = true
           AND (
             SELECT COUNT(*) FROM babysitter_availability 
             WHERE babysitter_id = bp.id 
@@ -190,14 +165,10 @@ router.get('/nearby', async (req, res) => {
       LIMIT $4
     `, [latNum, lngNum, radiusKm, limit]);
 
-    console.log(`✅ Found ${result.rows.length} babysitters within ${radiusKm}km`);
-
-    // Add distance and location freshness info
     const babysitters = result.rows.map(bs => {
-      const minutesAgo = bs.location_updated_at 
+      const minutesAgo = bs.location_updated_at
         ? Math.floor((Date.now() - new Date(bs.location_updated_at).getTime()) / 60000)
         : null;
-      
       return {
         ...bs,
         distance_km: parseFloat(bs.distance).toFixed(1),
@@ -216,10 +187,9 @@ router.get('/nearby', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Nearby babysitters error:', error);
-    res.status(500).json({ 
-      error: 'Server error', 
-      message: error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    res.status(500).json({
+      error: 'Server error',
+      message: error.message
     });
   }
 });
@@ -227,36 +197,25 @@ router.get('/nearby', async (req, res) => {
 // GET /api/babysitters/gallery/:userId
 router.get('/gallery/:userId', async (req, res) => {
   try {
-    console.log('🔍 Fetching gallery for user:', req.params.userId);
-    
     const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.params.userId]);
-    
-    if (profile.rows.length === 0) {
-      return res.json([]);
-    }
-    
+    if (profile.rows.length === 0) return res.json([]);
+
     try {
       const result = await db.query(
         'SELECT id, image_url, caption, is_primary FROM babysitter_images WHERE babysitter_id = $1 ORDER BY is_primary DESC, created_at DESC',
         [profile.rows[0].id]
       );
-      console.log('✅ Gallery images found:', result.rows.length);
       res.json(result.rows);
     } catch (imgError) {
-      console.log('⚠️ Images query error:', imgError.message);
       res.json([]);
     }
   } catch (error) {
     console.error('❌ Get gallery error:', error);
-    res.status(500).json({ 
-      error: 'Server error.', 
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ error: 'Server error.', message: error.message });
   }
 });
 
-// GET /api/babysitters/availability/available/:babysitterId - Get available slots for parents
+// GET /api/babysitters/availability/available/:babysitterId
 router.get('/availability/available/:babysitterId', async (req, res) => {
   try {
     const { babysitterId } = req.params;
@@ -300,27 +259,19 @@ router.get('/availability/available/:babysitterId', async (req, res) => {
 // GET /api/babysitters/profile/me
 router.get('/profile/me', authenticate, authorize('babysitter'), async (req, res) => {
   try {
-    console.log('🔍 Fetching profile for user:', req.user.id);
-    
     const userCheck = await db.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
-    console.log('👤 User found:', userCheck.rows[0]?.email);
-    
     if (userCheck.rows.length === 0) {
       return res.status(404).json({ error: 'User not found.' });
     }
-    
+
     const profileCheck = await db.query('SELECT * FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
-    console.log('📋 Profile exists:', profileCheck.rows.length > 0);
-    
     if (profileCheck.rows.length === 0) {
-      console.log('⚠️ No profile found, creating one...');
       await db.query(
         'INSERT INTO babysitter_profiles (user_id, status) VALUES ($1, $2)',
         [req.user.id, 'pending']
       );
-      console.log('✅ Profile created');
     }
-    
+
     const profile = await db.query(
       `SELECT bp.*, u.first_name, u.last_name, u.email, u.phone, u.city, u.language, u.gender, u.avatar_url,
         u.suspended_at, u.is_active
@@ -329,12 +280,11 @@ router.get('/profile/me', authenticate, authorize('babysitter'), async (req, res
        WHERE bp.user_id = $1`,
       [req.user.id]
     );
-    
+
     if (profile.rows.length === 0) {
       return res.status(404).json({ error: 'Profile not found.' });
     }
 
-    // Get documents
     try {
       const documents = await db.query(
         'SELECT id, document_type, document_url, is_verified, uploaded_at, rejection_reason FROM babysitter_documents WHERE babysitter_id = $1',
@@ -342,11 +292,9 @@ router.get('/profile/me', authenticate, authorize('babysitter'), async (req, res
       );
       profile.rows[0].documents = documents.rows || [];
     } catch (docError) {
-      console.log('⚠️ Documents query error:', docError.message);
       profile.rows[0].documents = [];
     }
 
-    // Get availability
     try {
       const availability = await db.query(
         'SELECT id, day_of_week, start_time, end_time, is_available, is_published, is_booked, published_at, booked_at FROM babysitter_availability WHERE babysitter_id = $1',
@@ -354,11 +302,9 @@ router.get('/profile/me', authenticate, authorize('babysitter'), async (req, res
       );
       profile.rows[0].availability = availability.rows || [];
     } catch (availError) {
-      console.log('⚠️ Availability query error:', availError.message);
       profile.rows[0].availability = [];
     }
 
-    // Get images
     try {
       const images = await db.query(
         'SELECT id, image_url, caption, is_primary FROM babysitter_images WHERE babysitter_id = $1 ORDER BY is_primary DESC, created_at DESC',
@@ -366,7 +312,6 @@ router.get('/profile/me', authenticate, authorize('babysitter'), async (req, res
       );
       profile.rows[0].images = images.rows || [];
     } catch (imgError) {
-      console.log('⚠️ Images query error:', imgError.message);
       profile.rows[0].images = [];
     }
 
@@ -380,15 +325,10 @@ router.get('/profile/me', authenticate, authorize('babysitter'), async (req, res
     if (profile.rows[0].documents && profile.rows[0].documents.length > 0) completedFields.push('documents');
     profile.rows[0].profile_completion = Math.round((completedFields.length / 7) * 100);
 
-    console.log('✅ Profile loaded successfully');
     res.json(profile.rows[0]);
   } catch (error) {
     console.error('❌ Get profile error:', error);
-    res.status(500).json({ 
-      error: 'Server error.', 
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ error: 'Server error.', message: error.message });
   }
 });
 
@@ -396,7 +336,7 @@ router.get('/profile/me', authenticate, authorize('babysitter'), async (req, res
 router.put('/profile', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const { bio, experience_years, hourly_rate, skills, emergency_contact_name, emergency_contact_phone } = req.body;
-    
+
     const userCheck = await db.query('SELECT suspended_at, is_active FROM users WHERE id = $1', [req.user.id]);
     if (userCheck.rows[0]?.suspended_at) {
       return res.status(403).json({ error: 'Your account is suspended.' });
@@ -433,7 +373,7 @@ router.put('/profile', authenticate, authorize('babysitter'), async (req, res) =
 router.post('/availability', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const { availability } = req.body;
-    
+
     const userCheck = await db.query('SELECT suspended_at, is_active FROM users WHERE id = $1', [req.user.id]);
     if (userCheck.rows[0]?.suspended_at) {
       return res.status(403).json({ error: 'Your account is suspended.' });
@@ -474,19 +414,11 @@ router.post('/availability/publish', authenticate, authorize('babysitter'), asyn
     if (userCheck.rows.length === 0) {
       return res.status(404).json({ error: 'User not found.' });
     }
-
     if (userCheck.rows[0].suspended_at) {
-      return res.status(403).json({ 
-        error: 'Your account is suspended. Please contact support.',
-        suspended: true
-      });
+      return res.status(403).json({ error: 'Your account is suspended. Please contact support.', suspended: true });
     }
-
     if (!userCheck.rows[0].is_active) {
-      return res.status(403).json({ 
-        error: 'Your account is deactivated. Please contact support.',
-        deactivated: true
-      });
+      return res.status(403).json({ error: 'Your account is deactivated. Please contact support.', deactivated: true });
     }
 
     const profile = await db.query(
@@ -497,12 +429,8 @@ router.post('/availability/publish', authenticate, authorize('babysitter'), asyn
     if (profile.rows.length === 0) {
       return res.status(404).json({ error: 'Babysitter profile not found.' });
     }
-
     if (profile.rows[0].status !== 'approved') {
-      return res.status(403).json({ 
-        error: 'Your profile is not approved yet. Please wait for admin approval.',
-        status: profile.rows[0].status
-      });
+      return res.status(403).json({ error: 'Your profile is not approved yet. Please wait for admin approval.', status: profile.rows[0].status });
     }
 
     const babysitterId = profile.rows[0].id;
@@ -511,11 +439,8 @@ router.post('/availability/publish', authenticate, authorize('babysitter'), asyn
       'SELECT COUNT(*) as count FROM babysitter_availability WHERE babysitter_id = $1 AND is_available = true AND is_booked = false',
       [babysitterId]
     );
-
     if (parseInt(hasAvailability.rows[0].count) === 0) {
-      return res.status(400).json({ 
-        error: 'No availability slots to publish. Please add availability first.' 
-      });
+      return res.status(400).json({ error: 'No availability slots to publish. Please add availability first.' });
     }
 
     if (availability && Array.isArray(availability) && availability.length > 0) {
@@ -535,18 +460,15 @@ router.post('/availability/publish', authenticate, authorize('babysitter'), asyn
         );
         if (result.rows.length > 0) publishedCount++;
       }
-      
+
       await db.query(
         `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
          VALUES ($1, $2, $3, $4, $5)`,
-        [req.user.id, 'publish_availability', 'babysitter', babysitterId, 
+        [req.user.id, 'publish_availability', 'babysitter', babysitterId,
          JSON.stringify({ slots_published: publishedCount })]
       );
 
-      res.json({ 
-        message: `Successfully published ${publishedCount} availability slots.`,
-        published: publishedCount
-      });
+      res.json({ message: `Successfully published ${publishedCount} availability slots.`, published: publishedCount });
     } else {
       const result = await db.query(
         `UPDATE babysitter_availability 
@@ -564,14 +486,11 @@ router.post('/availability/publish', authenticate, authorize('babysitter'), asyn
       await db.query(
         `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
          VALUES ($1, $2, $3, $4, $5)`,
-        [req.user.id, 'publish_all_availability', 'babysitter', babysitterId, 
+        [req.user.id, 'publish_all_availability', 'babysitter', babysitterId,
          JSON.stringify({ slots_published: result.rows.length })]
       );
 
-      res.json({ 
-        message: `Successfully published ${result.rows.length} availability slots.`,
-        published: result.rows.length
-      });
+      res.json({ message: `Successfully published ${result.rows.length} availability slots.`, published: result.rows.length });
     }
   } catch (error) {
     console.error('❌ Publish availability error:', error);
@@ -579,26 +498,15 @@ router.post('/availability/publish', authenticate, authorize('babysitter'), asyn
   }
 });
 
-// POST /api/babysitters/availability/unpublish - Unpublish ALL slots
+// POST /api/babysitters/availability/unpublish
 router.post('/availability/unpublish', authenticate, authorize('babysitter'), async (req, res) => {
   try {
-    const userCheck = await db.query(
-      'SELECT suspended_at, is_active FROM users WHERE id = $1',
-      [req.user.id]
-    );
-
+    const userCheck = await db.query('SELECT suspended_at, is_active FROM users WHERE id = $1', [req.user.id]);
     if (userCheck.rows[0]?.suspended_at) {
-      return res.status(403).json({ 
-        error: 'Your account is suspended.',
-        suspended: true
-      });
+      return res.status(403).json({ error: 'Your account is suspended.', suspended: true });
     }
 
-    const profile = await db.query(
-      'SELECT id FROM babysitter_profiles WHERE user_id = $1',
-      [req.user.id]
-    );
-
+    const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
     if (profile.rows.length === 0) {
       return res.status(404).json({ error: 'Babysitter profile not found.' });
     }
@@ -615,10 +523,7 @@ router.post('/availability/unpublish', authenticate, authorize('babysitter'), as
       [babysitterId]
     );
 
-    res.json({ 
-      message: `Unpublished ${result.rows.length} availability slots.`,
-      unpublished: result.rows.length
-    });
+    res.json({ message: `Unpublished ${result.rows.length} availability slots.`, unpublished: result.rows.length });
   } catch (error) {
     console.error('❌ Unpublish availability error:', error);
     res.status(500).json({ error: 'Server error.' });
@@ -629,34 +534,21 @@ router.post('/availability/unpublish', authenticate, authorize('babysitter'), as
 // 4. AVAILABILITY SLOT MANAGEMENT
 // ============================================
 
-// GET /api/babysitters/availability/slots - Get all slots for current babysitter
+// GET /api/babysitters/availability/slots
 router.get('/availability/slots', authenticate, authorize('babysitter'), async (req, res) => {
   try {
-    const profile = await db.query(
-      'SELECT id FROM babysitter_profiles WHERE user_id = $1',
-      [req.user.id]
-    );
-
+    const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
     if (profile.rows.length === 0) {
       return res.status(404).json({ error: 'Babysitter profile not found.' });
     }
 
     const result = await db.query(
       `SELECT 
-        a.id, 
-        a.day_of_week, 
-        a.start_time, 
-        a.end_time, 
-        a.is_available,
-        a.is_published,
-        a.is_booked,
-        a.published_at,
-        a.booked_at,
-        a.booked_booking_id,
-        b.status as booking_status,
-        b.parent_id,
-        p.first_name as booked_by_first_name,
-        p.last_name as booked_by_last_name
+        a.id, a.day_of_week, a.start_time, a.end_time,
+        a.is_available, a.is_published, a.is_booked,
+        a.published_at, a.booked_at, a.booked_booking_id,
+        b.status as booking_status, b.parent_id,
+        p.first_name as booked_by_first_name, p.last_name as booked_by_last_name
       FROM babysitter_availability a
       LEFT JOIN bookings b ON b.id = a.booked_booking_id
       LEFT JOIN users p ON p.id = b.parent_id
@@ -672,7 +564,7 @@ router.get('/availability/slots', authenticate, authorize('babysitter'), async (
   }
 });
 
-// PUT /api/babysitters/availability/slots/:id - Update a single slot
+// PUT /api/babysitters/availability/slots/:id
 router.put('/availability/slots/:id', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -689,11 +581,8 @@ router.put('/availability/slots/:id', authenticate, authorize('babysitter'), asy
     if (slotCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Availability slot not found.' });
     }
-
     if (slotCheck.rows[0].is_booked) {
-      return res.status(400).json({ 
-        error: 'Cannot edit a booked slot. Please contact the parent to cancel the booking first.' 
-      });
+      return res.status(400).json({ error: 'Cannot edit a booked slot. Please contact the parent to cancel the booking first.' });
     }
 
     const result = await db.query(
@@ -706,17 +595,14 @@ router.put('/availability/slots/:id', authenticate, authorize('babysitter'), asy
       [start_time, end_time, is_available, id]
     );
 
-    res.json({ 
-      message: 'Availability slot updated successfully.',
-      slot: result.rows[0]
-    });
+    res.json({ message: 'Availability slot updated successfully.', slot: result.rows[0] });
   } catch (error) {
     console.error('❌ Update slot error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
 
-// DELETE /api/babysitters/availability/slots/:id - Delete a single slot
+// DELETE /api/babysitters/availability/slots/:id
 router.delete('/availability/slots/:id', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -732,15 +618,11 @@ router.delete('/availability/slots/:id', authenticate, authorize('babysitter'), 
     if (slotCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Availability slot not found.' });
     }
-
     if (slotCheck.rows[0].is_booked) {
-      return res.status(400).json({ 
-        error: 'Cannot delete a booked slot. Please contact the parent to cancel the booking first.' 
-      });
+      return res.status(400).json({ error: 'Cannot delete a booked slot. Please contact the parent to cancel the booking first.' });
     }
 
     await db.query('DELETE FROM babysitter_availability WHERE id = $1', [id]);
-
     res.json({ message: 'Availability slot deleted successfully.' });
   } catch (error) {
     console.error('❌ Delete slot error:', error);
@@ -752,7 +634,7 @@ router.delete('/availability/slots/:id', authenticate, authorize('babysitter'), 
 // 5. PUBLISH/UNPUBLISH INDIVIDUAL SLOTS
 // ============================================
 
-// POST /api/babysitters/availability/publish/:id - Publish a single slot
+// POST /api/babysitters/availability/publish/:id
 router.post('/availability/publish/:id', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -768,19 +650,15 @@ router.post('/availability/publish/:id', authenticate, authorize('babysitter'), 
     if (slotCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Availability slot not found.' });
     }
-
     if (slotCheck.rows[0].status !== 'approved') {
       return res.status(403).json({ error: 'Your profile must be approved to publish slots.' });
     }
-
     if (slotCheck.rows[0].is_published) {
       return res.status(400).json({ error: 'This slot is already published.' });
     }
-
     if (!slotCheck.rows[0].is_available) {
       return res.status(400).json({ error: 'Cannot publish an unavailable slot.' });
     }
-
     if (slotCheck.rows[0].is_booked) {
       return res.status(400).json({ error: 'Cannot publish a booked slot.' });
     }
@@ -794,17 +672,14 @@ router.post('/availability/publish/:id', authenticate, authorize('babysitter'), 
       [id]
     );
 
-    res.json({ 
-      message: 'Slot published successfully.',
-      slot: result.rows[0]
-    });
+    res.json({ message: 'Slot published successfully.', slot: result.rows[0] });
   } catch (error) {
     console.error('❌ Publish slot error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
 
-// POST /api/babysitters/availability/unpublish/:id - Unpublish a single slot
+// POST /api/babysitters/availability/unpublish/:id
 router.post('/availability/unpublish/:id', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -820,11 +695,8 @@ router.post('/availability/unpublish/:id', authenticate, authorize('babysitter')
     if (slotCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Availability slot not found.' });
     }
-
     if (slotCheck.rows[0].is_booked) {
-      return res.status(400).json({ 
-        error: 'Cannot unpublish a booked slot.' 
-      });
+      return res.status(400).json({ error: 'Cannot unpublish a booked slot.' });
     }
 
     const result = await db.query(
@@ -835,10 +707,7 @@ router.post('/availability/unpublish/:id', authenticate, authorize('babysitter')
       [id]
     );
 
-    res.json({ 
-      message: 'Slot unpublished successfully.',
-      slot: result.rows[0]
-    });
+    res.json({ message: 'Slot unpublished successfully.', slot: result.rows[0] });
   } catch (error) {
     console.error('❌ Unpublish slot error:', error);
     res.status(500).json({ error: 'Server error.' });
@@ -849,7 +718,7 @@ router.post('/availability/unpublish/:id', authenticate, authorize('babysitter')
 // 6. DOCUMENT MANAGEMENT
 // ============================================
 
-// POST /api/babysitters/documents - Upload document
+// POST /api/babysitters/documents
 router.post('/documents', authenticate, authorize('babysitter'), upload.single('document'), async (req, res) => {
   try {
     const { document_type } = req.body;
@@ -867,7 +736,7 @@ router.post('/documents', authenticate, authorize('babysitter'), upload.single('
 
     const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
     const docUrl = `/uploads/${req.file.filename}`;
-    
+
     const result = await db.query(
       `INSERT INTO babysitter_documents (babysitter_id, document_type, document_url) 
        VALUES ($1, $2, $3) RETURNING *`,
@@ -877,9 +746,7 @@ router.post('/documents', authenticate, authorize('babysitter'), upload.single('
     const adminUsers = await db.query("SELECT id FROM users WHERE role = 'admin'");
     for (const admin of adminUsers.rows) {
       await createNotification(
-        admin.id,
-        'new_document',
-        '📄 New Document Uploaded',
+        admin.id, 'new_document', '📄 New Document Uploaded',
         `${req.user.first_name} ${req.user.last_name} uploaded a ${document_type}`,
         '/admin?tab=documents'
       );
@@ -917,11 +784,7 @@ router.delete('/documents/:id', authenticate, authorize('babysitter'), async (re
       return res.status(404).json({ error: 'Document not found.' });
     }
 
-    const profile = await db.query(
-      'SELECT id FROM babysitter_profiles WHERE user_id = $1',
-      [req.user.id]
-    );
-
+    const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
     if (doc.rows[0].profile_id !== profile.rows[0].id) {
       return res.status(403).json({ error: 'Unauthorized.' });
     }
@@ -934,7 +797,7 @@ router.delete('/documents/:id', authenticate, authorize('babysitter'), async (re
   }
 });
 
-// PUT /api/babysitters/documents/:id - Update/Resubmit document
+// PUT /api/babysitters/documents/:id
 router.put('/documents/:id', authenticate, authorize('babysitter'), upload.single('document'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -960,11 +823,7 @@ router.put('/documents/:id', authenticate, authorize('babysitter'), upload.singl
       return res.status(404).json({ error: 'Document not found.' });
     }
 
-    const profile = await db.query(
-      'SELECT id FROM babysitter_profiles WHERE user_id = $1',
-      [req.user.id]
-    );
-
+    const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
     if (doc.rows[0].profile_id !== profile.rows[0].id) {
       return res.status(403).json({ error: 'Unauthorized.' });
     }
@@ -978,7 +837,6 @@ router.put('/documents/:id', authenticate, authorize('babysitter'), upload.singl
       params.push(document_type);
       paramIndex++;
     }
-
     if (req.file) {
       const docUrl = `/uploads/${req.file.filename}`;
       query += `, document_url = $${paramIndex}`;
@@ -995,9 +853,7 @@ router.put('/documents/:id', authenticate, authorize('babysitter'), upload.singl
     const adminUsers = await db.query("SELECT id FROM users WHERE role = 'admin'");
     for (const admin of adminUsers.rows) {
       await createNotification(
-        admin.id,
-        'document_updated',
-        '📄 Document Updated',
+        admin.id, 'document_updated', '📄 Document Updated',
         `${req.user.first_name} ${req.user.last_name} updated their ${document_type || 'document'}.`,
         '/admin?tab=documents'
       );
@@ -1010,18 +866,10 @@ router.put('/documents/:id', authenticate, authorize('babysitter'), upload.singl
   }
 });
 
-// ============================================
-// 6.5 VIEW DOCUMENTS (Babysitter can view own documents)
-// ============================================
-
-// GET /api/babysitters/documents - Get all documents for current babysitter
+// GET /api/babysitters/documents
 router.get('/documents', authenticate, authorize('babysitter'), async (req, res) => {
   try {
-    const profile = await db.query(
-      'SELECT id FROM babysitter_profiles WHERE user_id = $1',
-      [req.user.id]
-    );
-
+    const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
     if (profile.rows.length === 0) {
       return res.status(404).json({ error: 'Babysitter profile not found.' });
     }
@@ -1048,7 +896,7 @@ router.get('/documents', authenticate, authorize('babysitter'), async (req, res)
 router.post('/gallery', authenticate, authorize('babysitter'), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No image uploaded.' });
-    
+
     const userCheck = await db.query('SELECT suspended_at, is_active FROM users WHERE id = $1', [req.user.id]);
     if (userCheck.rows[0]?.suspended_at) {
       return res.status(403).json({ error: 'Your account is suspended.' });
@@ -1073,9 +921,7 @@ router.post('/gallery', authenticate, authorize('babysitter'), upload.single('im
     const adminUsers = await db.query("SELECT id FROM users WHERE role = 'admin'");
     for (const admin of adminUsers.rows) {
       await createNotification(
-        admin.id,
-        'new_gallery_image',
-        '🖼️ New Gallery Image',
+        admin.id, 'new_gallery_image', '🖼️ New Gallery Image',
         `${req.user.first_name} ${req.user.last_name} uploaded a new image.`,
         '/admin?tab=documents'
       );
@@ -1135,11 +981,11 @@ router.put('/gallery/:imageId/primary', authenticate, authorize('babysitter'), a
 // 8. LOCATION ROUTES (AUTHENTICATED)
 // ============================================
 
-// POST /api/babysitters/location - Update user location with sharing preference
+// POST /api/babysitters/location
 router.post('/location', authenticate, async (req, res) => {
   try {
     const { latitude, longitude, is_sharing } = req.body;
-    
+
     if (!latitude || !longitude) {
       return res.status(400).json({ error: 'Latitude and longitude required.' });
     }
@@ -1151,25 +997,16 @@ router.post('/location', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Invalid coordinates.' });
     }
 
-    // Check if user is suspended
-    const userCheck = await db.query(
-      'SELECT suspended_at, is_active FROM users WHERE id = $1',
-      [req.user.id]
-    );
+    const userCheck = await db.query('SELECT suspended_at, is_active FROM users WHERE id = $1', [req.user.id]);
     if (userCheck.rows[0]?.suspended_at) {
       return res.status(403).json({ error: 'Your account is suspended.' });
     }
 
-    // Check if babysitter profile exists
-    const profileCheck = await db.query(
-      'SELECT id, share_location FROM babysitter_profiles WHERE user_id = $1',
-      [req.user.id]
-    );
+    const profileCheck = await db.query('SELECT id, share_location FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
     if (profileCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Babysitter profile not found.' });
     }
 
-    // Check if user_locations table exists
     const tableCheck = await db.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -1178,21 +1015,16 @@ router.post('/location', authenticate, async (req, res) => {
     `);
 
     if (!tableCheck.rows[0].exists) {
-      return res.status(503).json({ 
+      return res.status(503).json({
         error: 'Location service not available',
         message: 'Please run database migration first.'
       });
     }
 
-    // Determine sharing status: user's request OR admin's override
-    // If admin has disabled (share_location = false), user cannot override
     const adminEnabled = profileCheck.rows[0].share_location;
     const requestedSharing = is_sharing !== undefined ? is_sharing : profileCheck.rows[0].share_location;
-    
-    // User can only enable if admin hasn't disabled it
     const finalSharingStatus = adminEnabled ? requestedSharing : false;
 
-    // Update or insert location
     await db.query(`
       INSERT INTO user_locations (user_id, latitude, longitude, is_sharing, location_updated_at)
       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
@@ -1204,7 +1036,6 @@ router.post('/location', authenticate, async (req, res) => {
         location_updated_at = CURRENT_TIMESTAMP
     `, [req.user.id, lat, lng, finalSharingStatus]);
 
-    // If admin disabled sharing, let user know
     if (!adminEnabled && is_sharing === true) {
       return res.json({
         message: 'Location sharing has been disabled by admin. Please contact support.',
@@ -1234,7 +1065,7 @@ router.post('/location', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/babysitters/location/me - Get current babysitter's location
+// GET /api/babysitters/location/me
 router.get('/location/me', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const tableCheck = await db.query(`
@@ -1245,12 +1076,9 @@ router.get('/location/me', authenticate, authorize('babysitter'), async (req, re
     `);
 
     if (!tableCheck.rows[0].exists) {
-      return res.json({ 
-        latitude: null, 
-        longitude: null, 
-        is_sharing: false,
-        admin_disabled: false,
-        message: 'Location service not available' 
+      return res.json({
+        latitude: null, longitude: null, is_sharing: false,
+        admin_disabled: false, message: 'Location service not available'
       });
     }
 
@@ -1263,17 +1091,13 @@ router.get('/location/me', authenticate, authorize('babysitter'), async (req, re
     );
 
     if (result.rows.length === 0) {
-      return res.json({ 
-        latitude: null, 
-        longitude: null, 
-        is_sharing: false,
-        admin_disabled: false,
-        message: 'Location not set yet.' 
+      return res.json({
+        latitude: null, longitude: null, is_sharing: false,
+        admin_disabled: false, message: 'Location not set yet.'
       });
     }
 
     const data = result.rows[0];
-    // Admin disabled if admin_enabled is false
     const adminDisabled = data.admin_enabled === false;
 
     res.json({
@@ -1289,7 +1113,7 @@ router.get('/location/me', authenticate, authorize('babysitter'), async (req, re
   }
 });
 
-// PUT /api/babysitters/location/share - Toggle location sharing (respects admin override)
+// PUT /api/babysitters/location/share
 router.put('/location/share', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const { is_sharing } = req.body;
@@ -1298,32 +1122,20 @@ router.put('/location/share', authenticate, authorize('babysitter'), async (req,
       return res.status(400).json({ error: 'is_sharing is required.' });
     }
 
-    // Check if admin has disabled sharing
-    const profileCheck = await db.query(
-      'SELECT share_location FROM babysitter_profiles WHERE user_id = $1',
-      [req.user.id]
-    );
-
+    const profileCheck = await db.query('SELECT share_location FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
     if (profileCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Babysitter profile not found.' });
     }
 
     const adminEnabled = profileCheck.rows[0].share_location;
-    
     if (!adminEnabled && is_sharing === true) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         error: 'Location sharing has been disabled by admin. Please contact support.',
         admin_disabled: true
       });
     }
 
-    // Update profile
-    await db.query(
-      'UPDATE babysitter_profiles SET share_location = $1 WHERE user_id = $2',
-      [is_sharing, req.user.id]
-    );
-
-    // Update user_locations if record exists
+    await db.query('UPDATE babysitter_profiles SET share_location = $1 WHERE user_id = $2', [is_sharing, req.user.id]);
     await db.query(
       `UPDATE user_locations 
        SET is_sharing = $1, location_updated_at = CURRENT_TIMESTAMP
@@ -1331,18 +1143,14 @@ router.put('/location/share', authenticate, authorize('babysitter'), async (req,
       [is_sharing, req.user.id]
     );
 
-    res.json({
-      message: `Location sharing ${is_sharing ? 'enabled' : 'disabled'}.`,
-      is_sharing,
-      admin_disabled: false
-    });
+    res.json({ message: `Location sharing ${is_sharing ? 'enabled' : 'disabled'}.`, is_sharing, admin_disabled: false });
   } catch (error) {
     console.error('❌ Toggle location sharing error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
 
-// GET /api/babysitters/location - Get user's saved location (for any authenticated user)
+// GET /api/babysitters/location
 router.get('/location', authenticate, async (req, res) => {
   try {
     const tableCheck = await db.query(`
@@ -1360,11 +1168,11 @@ router.get('/location', authenticate, async (req, res) => {
       'SELECT latitude, longitude, is_sharing, location_updated_at FROM user_locations WHERE user_id = $1',
       [req.user.id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.json({ latitude: null, longitude: null, is_sharing: false });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('❌ Get location error:', error);
@@ -1376,61 +1184,36 @@ router.get('/location', authenticate, async (req, res) => {
 // 9. THE CATCH-ALL /:id ROUTE MUST BE LAST
 // ============================================
 
-// GET /api/babysitters/:id - Single babysitter profile (PUBLIC - No auth required)
+// GET /api/babysitters/:id - Single babysitter profile (PUBLIC)
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('🔍 Fetching babysitter profile for ID:', id);
-    
-    // Validate ID is a number
+
     if (isNaN(parseInt(id))) {
       return res.status(400).json({ error: 'Invalid babysitter ID. Must be a number.' });
     }
 
-    // First check if the user exists - PUBLIC query (no auth needed)
     const userCheck = await db.query(
       'SELECT id, role, is_active, suspended_at FROM users WHERE id = $1',
       [id]
     );
 
     if (userCheck.rows.length === 0) {
-      console.log(`❌ User with ID ${id} not found in database`);
-      return res.status(404).json({ 
-        error: 'Babysitter not found.',
-        message: `No user found with ID ${id}`
-      });
+      return res.status(404).json({ error: 'Babysitter not found.', message: `No user found with ID ${id}` });
     }
 
     const user = userCheck.rows[0];
 
-    // Check if user is a babysitter
     if (user.role !== 'babysitter') {
-      console.log(`❌ User ${id} is a ${user.role}, not a babysitter`);
-      return res.status(404).json({ 
-        error: 'Babysitter not found.',
-        message: `User with ID ${id} is not a babysitter`
-      });
+      return res.status(404).json({ error: 'Babysitter not found.', message: `User with ID ${id} is not a babysitter` });
     }
-
-    // Check if account is active
     if (!user.is_active) {
-      console.log(`❌ Babysitter ${id} account is deactivated`);
-      return res.status(403).json({ 
-        error: 'Babysitter account is deactivated.',
-        message: 'This babysitter account has been deactivated.'
-      });
+      return res.status(403).json({ error: 'Babysitter account is deactivated.', message: 'This babysitter account has been deactivated.' });
+    }
+    if (user.suspended_at) {
+      return res.status(403).json({ error: 'Babysitter account is suspended.', message: 'This babysitter account has been suspended.' });
     }
 
-    // Check if account is suspended
-    if (user.suspended_at) {
-      console.log(`❌ Babysitter ${id} account is suspended`);
-      return res.status(403).json({ 
-        error: 'Babysitter account is suspended.',
-        message: 'This babysitter account has been suspended.'
-      });
-    }
-    
-    // Get the babysitter profile - PUBLIC (no auth needed)
     const result = await db.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.city, u.language, u.gender, u.avatar_url,
         bp.bio, bp.experience_years, bp.hourly_rate, bp.is_verified, bp.status, bp.skills,
@@ -1441,22 +1224,19 @@ router.get('/:id', async (req, res) => {
       WHERE u.id = $1 AND u.role = 'babysitter' AND u.is_active = true`,
       [id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Babysitter profile not found.' });
     }
 
-    // Check if profile is approved
     if (result.rows[0].status !== 'approved') {
-      console.log(`⚠️ Babysitter ${id} profile status is ${result.rows[0].status}, not approved`);
-      // Still return the profile but with a warning
       result.rows[0].profile_warning = `Profile status is ${result.rows[0].status}`;
     }
 
-    // Get availability - only published and available ones for public view
+    // ✅ FIXED: include id, is_available, is_published so mobile can parse properly
     try {
       const availability = await db.query(
-        `SELECT day_of_week, start_time, end_time, is_booked
+        `SELECT id, day_of_week, start_time, end_time, is_available, is_published, is_booked
          FROM babysitter_availability 
          WHERE babysitter_id = (SELECT id FROM babysitter_profiles WHERE user_id = $1) 
          AND is_available = true 
@@ -1469,7 +1249,6 @@ router.get('/:id', async (req, res) => {
       result.rows[0].availability = [];
     }
 
-    // Get reviews
     try {
       const reviews = await db.query(
         `SELECT r.rating, r.comment, r.created_at, u.first_name, u.last_name
@@ -1479,11 +1258,9 @@ router.get('/:id', async (req, res) => {
       );
       result.rows[0].reviews = reviews.rows || [];
     } catch (reviewError) {
-      console.log('⚠️ Reviews query error:', reviewError.message);
       result.rows[0].reviews = [];
     }
 
-    // Get images
     try {
       const images = await db.query(
         'SELECT id, image_url, caption, is_primary FROM babysitter_images WHERE babysitter_id = (SELECT id FROM babysitter_profiles WHERE user_id = $1) ORDER BY is_primary DESC, created_at DESC',
@@ -1491,19 +1268,13 @@ router.get('/:id', async (req, res) => {
       );
       result.rows[0].images = images.rows || [];
     } catch (imgError) {
-      console.log('⚠️ Images query error:', imgError.message);
       result.rows[0].images = [];
     }
 
-    console.log('✅ Babysitter profile loaded successfully');
     res.json(result.rows[0]);
   } catch (error) {
     console.error('❌ Get babysitter error:', error);
-    res.status(500).json({ 
-      error: 'Server error.', 
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ error: 'Server error.', message: error.message });
   }
 });
 
@@ -1515,16 +1286,12 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
+  const a =
     Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon/2) * Math.sin(dLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
 }
-
-// ============================================
-// 11. EXPORT
-// ============================================
 
 module.exports = router;
