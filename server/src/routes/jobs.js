@@ -13,18 +13,20 @@ const router = express.Router();
 // Check if babysitter has conflicting jobs
 const checkBabysitterAvailability = async (babysitterId, startDate, endDate, startTime, endTime, excludeJobId = null) => {
     try {
+        // First check if the column exists
         const columnCheck = await db.query(`
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'job_posts' 
             AND column_name = 'selected_babysitter_id'
         `);
-
+        
+        // If column doesn't exist, return no conflicts
         if (columnCheck.rows.length === 0) {
             console.log('⚠️ selected_babysitter_id column does not exist, skipping availability check');
             return [];
         }
-
+        
         const query = `
             SELECT j.id, j.start_date, j.end_date, j.start_time, j.end_time, j.status
             FROM job_posts j
@@ -46,6 +48,7 @@ const checkBabysitterAvailability = async (babysitterId, startDate, endDate, sta
         return result.rows;
     } catch (error) {
         console.error('❌ Error checking babysitter availability:', error);
+        // Return empty array on error to allow selection
         return [];
     }
 };
@@ -85,6 +88,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
                 start_date, end_date, start_time, end_time, hourly_rate, location || null]
         );
 
+        // Notify available babysitters
         const babysitters = await db.query(
             `SELECT u.id FROM users u
              JOIN babysitter_profiles bp ON bp.user_id = u.id
@@ -109,26 +113,43 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
     }
 });
 
-// GET /api/jobs/parent/applicants/:jobId
+// ⚠️ IMPORTANT: This route MUST come BEFORE /parent
+// GET /api/jobs/parent/applicants/:jobId - Get applicants for a specific job
 router.get('/parent/applicants/:jobId', authenticate, authorize('parent'), async (req, res) => {
     try {
         const { jobId } = req.params;
+        
         console.log('📝 Fetching applicants for job:', jobId);
         console.log('👤 User ID:', req.user.id);
 
+        // First, verify the job exists and belongs to the parent
         const jobCheck = await db.query(
             'SELECT id, parent_id, title, status FROM job_posts WHERE id = $1',
             [jobId]
         );
 
+        console.log('📋 Job check result:', jobCheck.rows);
+
         if (jobCheck.rows.length === 0) {
-            return res.status(404).json({ success: false, error: 'Job not found.', jobId });
+            console.log('❌ Job not found:', jobId);
+            return res.status(404).json({ 
+                success: false,
+                error: 'Job not found.',
+                jobId: jobId 
+            });
         }
 
+        // Check if the job belongs to the current user
         if (jobCheck.rows[0].parent_id !== req.user.id) {
-            return res.status(403).json({ success: false, error: 'You do not have permission to view applicants for this job.' });
+            console.log('❌ Permission denied. Job owner:', jobCheck.rows[0].parent_id, 'Current user:', req.user.id);
+            return res.status(403).json({ 
+                success: false,
+                error: 'You do not have permission to view applicants for this job.'
+            });
         }
 
+        // Get applicants with full profile details - FIXED: removed LIMIT from subquery
+        console.log('🔍 Fetching applicants for job:', jobId);
         const result = await db.query(
             `SELECT 
                 a.id as application_id,
@@ -176,6 +197,9 @@ router.get('/parent/applicants/:jobId', authenticate, authorize('parent'), async
             [jobId]
         );
 
+        console.log(`✅ Found ${result.rows.length} applicants for job ${jobId}`);
+
+        // Return success response with data
         res.json({
             success: true,
             job: {
@@ -186,15 +210,29 @@ router.get('/parent/applicants/:jobId', authenticate, authorize('parent'), async
             applicants: result.rows,
             total: result.rows.length
         });
+
     } catch (error) {
         console.error('❌ Get applicants error:', error);
-        res.status(500).json({ success: false, error: 'Failed to fetch applicants', details: error.message });
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code
+        });
+        
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to fetch applicants',
+            details: error.message,
+            code: error.code
+        });
     }
 });
 
 // GET /api/jobs/parent - Get parent's job posts with applicants
 router.get('/parent', authenticate, authorize('parent'), async (req, res) => {
     try {
+        console.log('📝 Fetching jobs for parent:', req.user.id);
+        
         const result = await db.query(
             `SELECT j.*,
                 (SELECT COUNT(*) FROM job_applications WHERE job_post_id = j.id) as application_count,
@@ -245,10 +283,20 @@ router.get('/parent', authenticate, authorize('parent'), async (req, res) => {
              ORDER BY j.created_at DESC`,
             [req.user.id]
         );
+        
+        console.log(`✅ Found ${result.rows.length} jobs for parent`);
         res.json(result.rows);
     } catch (error) {
         console.error('❌ Get parent jobs error:', error);
-        res.status(500).json({ error: 'Server error.', details: error.message });
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code
+        });
+        res.status(500).json({ 
+            error: 'Server error.',
+            details: error.message 
+        });
     }
 });
 
@@ -256,6 +304,7 @@ router.get('/parent', authenticate, authorize('parent'), async (req, res) => {
 router.get('/parent/:id', authenticate, authorize('parent'), async (req, res) => {
     try {
         const { id } = req.params;
+
         const result = await db.query(
             `SELECT j.*,
                 (SELECT json_agg(
@@ -328,6 +377,7 @@ router.put('/:id', authenticate, authorize('parent'), async (req, res) => {
             hourly_rate, location
         } = req.body;
 
+        // Check if job belongs to parent and is active
         const jobCheck = await db.query(
             'SELECT * FROM job_posts WHERE id = $1 AND parent_id = $2 AND status = $3',
             [id, req.user.id, 'active']
@@ -335,6 +385,8 @@ router.put('/:id', authenticate, authorize('parent'), async (req, res) => {
         if (jobCheck.rows.length === 0) {
             return res.status(404).json({ error: 'Job not found, not yours, or not active.' });
         }
+
+        // Check if already has a selected babysitter
         if (jobCheck.rows[0].selected_babysitter_id) {
             return res.status(400).json({ error: 'Cannot edit job after selecting a babysitter.' });
         }
@@ -359,14 +411,17 @@ router.put('/:id', authenticate, authorize('parent'), async (req, res) => {
                 hourly_rate, location, id]
         );
 
-        res.json({ message: 'Job updated successfully!', job: result.rows[0] });
+        res.json({
+            message: 'Job updated successfully!',
+            job: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Edit job error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// DELETE /api/jobs/:id - Delete job post
+// DELETE /api/jobs/:id - Delete job post (only if no babysitter selected yet)
 router.delete('/:id', authenticate, authorize('parent'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -378,11 +433,13 @@ router.delete('/:id', authenticate, authorize('parent'), async (req, res) => {
         if (jobCheck.rows.length === 0) {
             return res.status(404).json({ error: 'Job not found, not yours, or not active.' });
         }
+
         if (jobCheck.rows[0].selected_babysitter_id) {
             return res.status(400).json({ error: 'Cannot delete job after selecting a babysitter.' });
         }
 
         await db.query('DELETE FROM job_posts WHERE id = $1', [id]);
+
         res.json({ message: 'Job deleted successfully!' });
     } catch (error) {
         console.error('❌ Delete job error:', error);
@@ -400,6 +457,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
             return res.status(400).json({ error: 'Babysitter ID required.' });
         }
 
+        // Check if job belongs to parent and is active
         const jobCheck = await db.query(
             'SELECT * FROM job_posts WHERE id = $1 AND parent_id = $2 AND status = $3',
             [id, req.user.id, 'active']
@@ -408,6 +466,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
             return res.status(404).json({ error: 'Job not found or not active.' });
         }
 
+        // Check if babysitter applied
         const appCheck = await db.query(
             'SELECT * FROM job_applications WHERE job_post_id = $1 AND babysitter_id = $2',
             [id, babysitter_id]
@@ -416,18 +475,29 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
             return res.status(400).json({ error: 'Babysitter has not applied for this job.' });
         }
 
+        // Check babysitter availability
         const job = jobCheck.rows[0];
         const conflicts = await checkBabysitterAvailability(
-            babysitter_id, job.start_date, job.end_date, job.start_time, job.end_time
+            babysitter_id,
+            job.start_date,
+            job.end_date,
+            job.start_time,
+            job.end_time
         );
+
         if (conflicts.length > 0) {
-            return res.status(409).json({ error: 'Babysitter is not available during this time.', conflicts });
+            return res.status(409).json({
+                error: 'Babysitter is not available during this time.',
+                conflicts: conflicts
+            });
         }
 
+        // Begin transaction for atomic booking + selection
         const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
 
+            // Update job status and selected babysitter
             const result = await client.query(
                 `UPDATE job_posts 
                  SET status = 'in_progress', 
@@ -438,6 +508,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
                 [babysitter_id, id]
             );
 
+            // Update application status for selected babysitter
             await client.query(
                 `UPDATE job_applications 
                  SET status = 'accepted', updated_at = CURRENT_TIMESTAMP 
@@ -445,6 +516,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
                 [id, babysitter_id]
             );
 
+            // Reject all other applications
             await client.query(
                 `UPDATE job_applications 
                  SET status = 'rejected', updated_at = CURRENT_TIMESTAMP 
@@ -452,12 +524,13 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
                 [id, babysitter_id]
             );
 
+            // Create a booking record from the job details
             const profile = await client.query(
                 'SELECT hourly_rate FROM babysitter_profiles WHERE user_id = $1',
                 [babysitter_id]
             );
             const hourlyRate = profile.rows[0]?.hourly_rate || job.hourly_rate;
-
+            
             const startDateTime = new Date(`${job.start_date}T${job.start_time}`);
             const endDateTime = new Date(`${job.end_date}T${job.end_time}`);
             const totalHours = Math.max(1, (endDateTime - startDateTime) / (1000 * 60 * 60));
@@ -470,6 +543,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
                 [job.parent_id, babysitter_id, job.start_date, job.end_date, job.start_time, job.end_time, totalHours, totalAmount, job.description || null]
             );
 
+            // Find and lock matching availability slots for this babysitter
             const matchingSlots = await client.query(
                 `SELECT id FROM babysitter_availability 
                  WHERE babysitter_id = (SELECT id FROM babysitter_profiles WHERE user_id = $1)
@@ -492,6 +566,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
 
             await client.query('COMMIT');
 
+            // Notify selected babysitter
             await createNotification(
                 babysitter_id,
                 'job_accepted',
@@ -500,6 +575,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
                 `/jobs/${id}`
             );
 
+            // Notify other applicants
             const rejectedApps = await db.query(
                 'SELECT babysitter_id FROM job_applications WHERE job_post_id = $1 AND babysitter_id != $2 AND status = $3',
                 [id, babysitter_id, 'rejected']
@@ -531,7 +607,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
     }
 });
 
-// PUT /api/jobs/:id/cancel-selection
+// PUT /api/jobs/:id/cancel-selection - Parent cancels selected babysitter
 router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -546,10 +622,12 @@ router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (re
 
         const previousBabysitterId = jobCheck.rows[0].selected_babysitter_id;
 
+        // Begin transaction
         const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
 
+            // Update job back to active
             const result = await client.query(
                 `UPDATE job_posts 
                  SET status = 'active', 
@@ -560,6 +638,7 @@ router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (re
                 [id]
             );
 
+            // Update applications - set previous babysitter back to pending, others back to pending
             await client.query(
                 `UPDATE job_applications 
                  SET status = 'pending', updated_at = CURRENT_TIMESTAMP 
@@ -567,6 +646,7 @@ router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (re
                 [id]
             );
 
+            // Cancel any associated booking and free its slots
             const relatedBooking = await client.query(
                 `SELECT id FROM bookings 
                  WHERE parent_id = $1 AND babysitter_id = $2 
@@ -583,6 +663,7 @@ router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (re
                          WHERE id = $2`,
                         [req.user.id, bk.id]
                     );
+                    // Free all slots locked by this booking
                     await client.query(
                         `UPDATE babysitter_availability 
                          SET is_booked = false, booked_booking_id = NULL, booked_at = NULL
@@ -594,6 +675,7 @@ router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (re
 
             await client.query('COMMIT');
 
+            // Notify the previous babysitter
             await createNotification(
                 previousBabysitterId,
                 'job_cancelled',
@@ -602,6 +684,7 @@ router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (re
                 `/jobs/${id}`
             );
 
+            // Notify all applicants that job is available again
             const applicants = await db.query(
                 'SELECT DISTINCT babysitter_id FROM job_applications WHERE job_post_id = $1',
                 [id]
@@ -635,79 +718,54 @@ router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (re
 });
 
 // ============================================
-// POST /api/jobs/:id/report
-// ============================================
-// Now with detailed debug logging at every step so we can trace exactly
-// where the 500 is coming from.
+// ✅ FIXED: POST /api/jobs/:id/report
+// Column name corrected from `reported_id` → `reported_user_id`
 // ============================================
 router.post('/:id/report', authenticate, async (req, res) => {
-    console.log('🎯 [REPORT] Handler entered');
-    console.log('   - Job ID:', req.params.id);
-    console.log('   - User ID:', req.user?.id, 'Role:', req.user?.role);
-    console.log('   - Body:', JSON.stringify(req.body));
-
     try {
         const { id } = req.params;
         const { reported_user_id, reason, description } = req.body;
 
         if (!reported_user_id || !reason) {
-            console.log('   ❌ Validation failed: missing reported_user_id or reason');
             return res.status(400).json({ error: 'Reported user and reason required.' });
         }
 
-        console.log('   → Checking job exists...');
+        // Check if job exists and user is involved
         const jobCheck = await db.query(
             'SELECT * FROM job_posts WHERE id = $1',
             [id]
         );
-        console.log('   → Job check result rows:', jobCheck.rows.length);
-
         if (jobCheck.rows.length === 0) {
-            console.log('   ❌ Job not found');
             return res.status(404).json({ error: 'Job not found.' });
         }
 
         const job = jobCheck.rows[0];
-        console.log('   → Job parent_id:', job.parent_id, 'selected_babysitter_id:', job.selected_babysitter_id);
-
         if (req.user.id !== job.parent_id && req.user.id !== job.selected_babysitter_id) {
-            console.log('   ❌ User not involved in this job');
             return res.status(403).json({ error: 'You are not involved in this job.' });
         }
 
-        console.log('   → Checking duplicate report...');
+        // Check if report already exists
         const existing = await db.query(
             'SELECT id FROM reports WHERE job_post_id = $1 AND reporter_id = $2 AND reported_user_id = $3',
             [id, req.user.id, reported_user_id]
         );
-        console.log('   → Existing reports found:', existing.rows.length);
-
         if (existing.rows.length > 0) {
-            console.log('   ❌ Duplicate report');
             return res.status(409).json({ error: 'You already reported this user for this job.' });
         }
 
-        console.log('   → Inserting report...');
         const result = await db.query(
             `INSERT INTO reports (reporter_id, reported_user_id, job_post_id, reason, description)
              VALUES ($1, $2, $3, $4, $5) RETURNING *`,
             [req.user.id, reported_user_id, id, reason, description || null]
         );
 
-        console.log('   ✅ Report inserted successfully. ID:', result.rows[0].id);
-
         res.status(201).json({
             message: 'Report submitted successfully. Admin will review it.',
             report: result.rows[0]
         });
     } catch (error) {
-        console.error('   ❌ [REPORT] CAUGHT ERROR:');
-        console.error('   - Message:', error.message);
-        console.error('   - Code:', error.code);
-        console.error('   - Detail:', error.detail);
-        console.error('   - Constraint:', error.constraint);
-        console.error('   - Stack:', error.stack);
-        res.status(500).json({ error: 'Server error.', debug: error.message });
+        console.error('❌ Create report error:', error);
+        res.status(500).json({ error: 'Server error.' });
     }
 });
 
@@ -759,6 +817,7 @@ router.get('/', authenticate, authorize('babysitter'), async (req, res) => {
 router.get('/:id', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
+
         const result = await db.query(
             `SELECT j.*,
                 u.first_name, u.last_name, u.email, u.phone, u.city,
@@ -781,7 +840,7 @@ router.get('/:id', authenticate, authorize('babysitter'), async (req, res) => {
     }
 });
 
-// GET /api/jobs/applications/my
+// GET /api/jobs/applications/my - Get babysitter's applications with full details
 router.get('/applications/my', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const result = await db.query(
@@ -807,7 +866,7 @@ router.get('/applications/my', authenticate, authorize('babysitter'), async (req
     }
 });
 
-// GET /api/jobs/my/assigned
+// GET /api/jobs/my/assigned - Get babysitter's assigned jobs (in_progress)
 router.get('/my/assigned', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const result = await db.query(
@@ -820,12 +879,22 @@ router.get('/my/assigned', authenticate, authorize('babysitter'), async (req, re
             [req.user.id]
         );
 
+        // Check for conflicts
         const jobsWithConflicts = [];
         for (const job of result.rows) {
             const conflicts = await checkBabysitterAvailability(
-                req.user.id, job.start_date, job.end_date, job.start_time, job.end_time, job.id
+                req.user.id,
+                job.start_date,
+                job.end_date,
+                job.start_time,
+                job.end_time,
+                job.id
             );
-            jobsWithConflicts.push({ ...job, has_conflicts: conflicts.length > 0, conflicts });
+            jobsWithConflicts.push({
+                ...job,
+                has_conflicts: conflicts.length > 0,
+                conflicts: conflicts
+            });
         }
 
         res.json(jobsWithConflicts);
@@ -835,7 +904,7 @@ router.get('/my/assigned', authenticate, authorize('babysitter'), async (req, re
     }
 });
 
-// GET /api/jobs/my/completed
+// GET /api/jobs/my/completed - Get babysitter's completed jobs
 router.get('/my/completed', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const result = await db.query(
@@ -857,7 +926,7 @@ router.get('/my/completed', authenticate, authorize('babysitter'), async (req, r
     }
 });
 
-// POST /api/jobs/:id/apply
+// POST /api/jobs/:id/apply - Apply for a job
 router.post('/:id/apply', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -911,14 +980,17 @@ router.post('/:id/apply', authenticate, authorize('babysitter'), async (req, res
             `/jobs/${id}`
         );
 
-        res.status(201).json({ message: 'Application submitted successfully!', application: result.rows[0] });
+        res.status(201).json({
+            message: 'Application submitted successfully!',
+            application: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Apply for job error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// PUT /api/jobs/:id/withdraw-application
+// PUT /api/jobs/:id/withdraw-application - Withdraw application
 router.put('/:id/withdraw-application', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -943,10 +1015,11 @@ router.put('/:id/withdraw-application', authenticate, authorize('babysitter'), a
     }
 });
 
-// PUT /api/jobs/:id/start
+// PUT /api/jobs/:id/start - Babysitter starts the job
 router.put('/:id/start', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
+
         const jobCheck = await db.query(
             'SELECT * FROM job_posts WHERE id = $1 AND selected_babysitter_id = $2 AND status = $3',
             [id, req.user.id, 'in_progress']
@@ -954,17 +1027,22 @@ router.put('/:id/start', authenticate, authorize('babysitter'), async (req, res)
         if (jobCheck.rows.length === 0) {
             return res.status(404).json({ error: 'Job not found or not assigned to you.' });
         }
-        res.json({ message: 'Job started successfully!', job: jobCheck.rows[0] });
+
+        res.json({
+            message: 'Job started successfully!',
+            job: jobCheck.rows[0]
+        });
     } catch (error) {
         console.error('❌ Start job error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// PUT /api/jobs/:id/complete
+// PUT /api/jobs/:id/complete - Babysitter completes the job
 router.put('/:id/complete', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
+
         const jobCheck = await db.query(
             'SELECT * FROM job_posts WHERE id = $1 AND selected_babysitter_id = $2 AND status = $3',
             [id, req.user.id, 'in_progress']
@@ -981,6 +1059,7 @@ router.put('/:id/complete', authenticate, authorize('babysitter'), async (req, r
             [id]
         );
 
+        // Notify parent
         await createNotification(
             jobCheck.rows[0].parent_id,
             'job_completed',
@@ -989,17 +1068,21 @@ router.put('/:id/complete', authenticate, authorize('babysitter'), async (req, r
             `/jobs/${id}`
         );
 
-        res.json({ message: 'Job completed successfully!', job: result.rows[0] });
+        res.json({
+            message: 'Job completed successfully!',
+            job: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Complete job error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// PUT /api/jobs/:id/cancel
+// PUT /api/jobs/:id/cancel - Babysitter cancels the job
 router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
+
         const jobCheck = await db.query(
             'SELECT * FROM job_posts WHERE id = $1 AND selected_babysitter_id = $2 AND status = $3',
             [id, req.user.id, 'in_progress']
@@ -1008,6 +1091,7 @@ router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res
             return res.status(404).json({ error: 'Job not found or not assigned to you.' });
         }
 
+        // Update job back to active, remove selected babysitter
         const result = await db.query(
             `UPDATE job_posts 
              SET status = 'active', 
@@ -1018,6 +1102,7 @@ router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res
             [id]
         );
 
+        // Cancel associated bookings and free their slots
         const relatedBookings = await db.query(
             `SELECT id FROM bookings 
              WHERE parent_id = $1 AND babysitter_id = $2 
@@ -1041,6 +1126,7 @@ router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res
             );
         }
 
+        // Update applications - set this babysitter to cancelled
         await db.query(
             `UPDATE job_applications 
              SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP 
@@ -1048,6 +1134,7 @@ router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res
             [id, req.user.id]
         );
 
+        // Update other applications back to pending
         await db.query(
             `UPDATE job_applications 
              SET status = 'pending', updated_at = CURRENT_TIMESTAMP 
@@ -1055,6 +1142,7 @@ router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res
             [id, req.user.id]
         );
 
+        // Notify parent
         await createNotification(
             jobCheck.rows[0].parent_id,
             'job_cancelled',
@@ -1063,14 +1151,17 @@ router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res
             `/jobs/${id}`
         );
 
-        res.json({ message: 'Job cancelled. It is now available for other babysitters.', job: result.rows[0] });
+        res.json({
+            message: 'Job cancelled. It is now available for other babysitters.',
+            job: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Cancel job error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// PUT /api/jobs/:id/review
+// PUT /api/jobs/:id/review - Leave a review
 router.put('/:id/review', authenticate, async (req, res) => {
     try {
         const { id } = req.params;
@@ -1080,6 +1171,7 @@ router.put('/:id/review', authenticate, async (req, res) => {
             return res.status(400).json({ error: 'Rating must be between 1 and 5.' });
         }
 
+        // Check if job is completed
         const jobCheck = await db.query(
             'SELECT * FROM job_posts WHERE id = $1 AND status = $2',
             [id, 'completed']
@@ -1088,10 +1180,12 @@ router.put('/:id/review', authenticate, async (req, res) => {
             return res.status(400).json({ error: 'Job not found or not completed.' });
         }
 
+        // Check if user is authorized to review
         if (req.user.id !== jobCheck.rows[0].parent_id && req.user.id !== jobCheck.rows[0].selected_babysitter_id) {
             return res.status(403).json({ error: 'Unauthorized.' });
         }
 
+        // Check if review already exists
         const existing = await db.query(
             'SELECT id FROM job_reviews WHERE job_post_id = $1 AND reviewer_id = $2',
             [id, req.user.id]
@@ -1106,6 +1200,7 @@ router.put('/:id/review', authenticate, async (req, res) => {
             [id, req.user.id, reviewee_id, rating, comment || null]
         );
 
+        // Notify reviewee
         await createNotification(
             reviewee_id,
             'job_review',
@@ -1114,17 +1209,21 @@ router.put('/:id/review', authenticate, async (req, res) => {
             `/jobs/${id}`
         );
 
-        res.status(201).json({ message: 'Review submitted successfully!', review: result.rows[0] });
+        res.status(201).json({
+            message: 'Review submitted successfully!',
+            review: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Create job review error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// GET /api/jobs/:id/reviews
+// GET /api/jobs/:id/reviews - Get reviews for a job
 router.get('/:id/reviews', async (req, res) => {
     try {
         const { id } = req.params;
+
         const result = await db.query(
             `SELECT r.*, 
                 u.first_name, u.last_name, u.avatar_url
@@ -1134,6 +1233,7 @@ router.get('/:id/reviews', async (req, res) => {
              ORDER BY r.created_at DESC`,
             [id]
         );
+
         res.json(result.rows);
     } catch (error) {
         console.error('❌ Get job reviews error:', error);
@@ -1145,9 +1245,10 @@ router.get('/:id/reviews', async (req, res) => {
 // ADMIN ROUTES
 // ============================================
 
-// GET /api/jobs/admin/stats
+// GET /api/jobs/admin/stats - Get admin dashboard stats
 router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) => {
     try {
+        // Total jobs stats
         const totalJobs = await db.query(`
             SELECT 
                 COUNT(*) as total,
@@ -1158,6 +1259,7 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
             FROM job_posts
         `);
 
+        // Total users stats
         const userStats = await db.query(`
             SELECT 
                 COUNT(*) as total_users,
@@ -1168,6 +1270,7 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
             FROM users
         `);
 
+        // Total applications stats
         const applicationStats = await db.query(`
             SELECT 
                 COUNT(*) as total_applications,
@@ -1177,9 +1280,15 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
             FROM job_applications
         `);
 
+        // Recent jobs with parent and babysitter info
         const recentJobs = await db.query(`
             SELECT 
-                j.id, j.title, j.status, j.created_at, j.start_date, j.end_date,
+                j.id,
+                j.title,
+                j.status,
+                j.created_at,
+                j.start_date,
+                j.end_date,
                 p.first_name as parent_first_name,
                 p.last_name as parent_last_name,
                 p.email as parent_email,
@@ -1193,6 +1302,7 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
             LIMIT 20
         `);
 
+        // Monthly job trends
         const monthlyTrends = await db.query(`
             SELECT 
                 DATE_TRUNC('month', created_at) as month,
@@ -1204,9 +1314,13 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
             ORDER BY month DESC
         `);
 
+        // Top babysitters by jobs completed
         const topBabysitters = await db.query(`
             SELECT 
-                u.id, u.first_name, u.last_name, u.email,
+                u.id,
+                u.first_name,
+                u.last_name,
+                u.email,
                 COUNT(j.id) as jobs_completed,
                 COALESCE(AVG(r.rating), 0) as avg_rating
             FROM users u
@@ -1218,6 +1332,7 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
             LIMIT 10
         `);
 
+        // Reports stats
         const reportsStats = await db.query(`
             SELECT 
                 COUNT(*) as total_reports,
@@ -1243,7 +1358,7 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
     }
 });
 
-// GET /api/jobs/admin/jobs
+// GET /api/jobs/admin/jobs - Get all jobs for admin with filters
 router.get('/admin/jobs', authenticate, authorize('admin'), async (req, res) => {
     try {
         const { status, parent_id, babysitter_id, page = 1, limit = 20 } = req.query;
@@ -1288,7 +1403,11 @@ router.get('/admin/jobs', authenticate, authorize('admin'), async (req, res) => 
             LIMIT $${paramCount} OFFSET $${paramCount + 1}
         `;
 
-        const countQuery = `SELECT COUNT(*) as total FROM job_posts j WHERE ${whereClause}`;
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM job_posts j
+            WHERE ${whereClause}
+        `;
 
         const result = await db.query(query, [...params, parseInt(limit), offset]);
         const countResult = await db.query(countQuery, params);
@@ -1305,7 +1424,7 @@ router.get('/admin/jobs', authenticate, authorize('admin'), async (req, res) => 
     }
 });
 
-// GET /api/jobs/admin/reports
+// GET /api/jobs/admin/reports - Get all reports
 router.get('/admin/reports', authenticate, authorize('admin'), async (req, res) => {
     try {
         const { status, page = 1, limit = 20 } = req.query;
@@ -1341,7 +1460,11 @@ router.get('/admin/reports', authenticate, authorize('admin'), async (req, res) 
             LIMIT $${paramCount} OFFSET $${paramCount + 1}
         `;
 
-        const countQuery = `SELECT COUNT(*) as total FROM reports r WHERE ${whereClause}`;
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM reports r
+            WHERE ${whereClause}
+        `;
 
         const result = await db.query(query, [...params, parseInt(limit), offset]);
         const countResult = await db.query(countQuery, params);
@@ -1358,7 +1481,7 @@ router.get('/admin/reports', authenticate, authorize('admin'), async (req, res) 
     }
 });
 
-// PUT /api/jobs/admin/reports/:id
+// PUT /api/jobs/admin/reports/:id - Update report status
 router.put('/admin/reports/:id', authenticate, authorize('admin'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -1382,20 +1505,24 @@ router.put('/admin/reports/:id', authenticate, authorize('admin'), async (req, r
             return res.status(404).json({ error: 'Report not found.' });
         }
 
+        // Log admin action
         await db.query(
-            `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [req.user.id, 'updated_report', 'report', id, JSON.stringify({ new_status: status })]
+            `INSERT INTO admin_logs (admin_id, action, details)
+             VALUES ($1, $2, $3)`,
+            [req.user.id, 'updated_report', { report_id: id, new_status: status }]
         );
 
-        res.json({ message: 'Report updated successfully!', report: result.rows[0] });
+        res.json({
+            message: 'Report updated successfully!',
+            report: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Update report error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// PUT /api/jobs/admin/users/:id/suspend
+// PUT /api/jobs/admin/users/:id/suspend - Suspend user
 router.put('/admin/users/:id/suspend', authenticate, authorize('admin'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -1414,12 +1541,14 @@ router.put('/admin/users/:id/suspend', authenticate, authorize('admin'), async (
             return res.status(404).json({ error: 'User not found.' });
         }
 
+        // Log admin action
         await db.query(
-            `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [req.user.id, 'suspended_user', 'user', id, JSON.stringify({ reason: reason || 'No reason provided' })]
+            `INSERT INTO admin_logs (admin_id, action, details)
+             VALUES ($1, $2, $3)`,
+            [req.user.id, 'suspended_user', { user_id: id, reason: reason || 'No reason provided' }]
         );
 
+        // Notify user
         await createNotification(
             id,
             'account_suspended',
@@ -1428,14 +1557,17 @@ router.put('/admin/users/:id/suspend', authenticate, authorize('admin'), async (
             '/settings'
         );
 
-        res.json({ message: 'User suspended successfully!', user: result.rows[0] });
+        res.json({
+            message: 'User suspended successfully!',
+            user: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Suspend user error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// PUT /api/jobs/admin/users/:id/unsuspend
+// PUT /api/jobs/admin/users/:id/unsuspend - Unsuspend user
 router.put('/admin/users/:id/unsuspend', authenticate, authorize('admin'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -1453,12 +1585,14 @@ router.put('/admin/users/:id/unsuspend', authenticate, authorize('admin'), async
             return res.status(404).json({ error: 'User not found.' });
         }
 
+        // Log admin action
         await db.query(
-            `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [req.user.id, 'unsuspended_user', 'user', id, JSON.stringify({})]
+            `INSERT INTO admin_logs (admin_id, action, details)
+             VALUES ($1, $2, $3)`,
+            [req.user.id, 'unsuspended_user', { user_id: id }]
         );
 
+        // Notify user
         await createNotification(
             id,
             'account_restored',
@@ -1467,14 +1601,17 @@ router.put('/admin/users/:id/unsuspend', authenticate, authorize('admin'), async
             '/settings'
         );
 
-        res.json({ message: 'User unsuspended successfully!', user: result.rows[0] });
+        res.json({
+            message: 'User unsuspended successfully!',
+            user: result.rows[0]
+        });
     } catch (error) {
         console.error('❌ Unsuspend user error:', error);
         res.status(500).json({ error: 'Server error.' });
     }
 });
 
-// DELETE /api/jobs/admin/jobs/:id
+// DELETE /api/jobs/admin/jobs/:id - Admin deletes job
 router.delete('/admin/jobs/:id', authenticate, authorize('admin'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -1486,10 +1623,11 @@ router.delete('/admin/jobs/:id', authenticate, authorize('admin'), async (req, r
 
         await db.query('DELETE FROM job_posts WHERE id = $1', [id]);
 
+        // Log admin action
         await db.query(
-            `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [req.user.id, 'deleted_job', 'job', id, JSON.stringify({})]
+            `INSERT INTO admin_logs (admin_id, action, details)
+             VALUES ($1, $2, $3)`,
+            [req.user.id, 'deleted_job', { job_id: id }]
         );
 
         res.json({ message: 'Job deleted successfully by admin.' });
