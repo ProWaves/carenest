@@ -12,7 +12,7 @@ const server = http.createServer(app);
 // ============================================
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  
+
   // List of allowed origins
   const allowedOrigins = [
     'https://sitterspot-backend.onrender.com',
@@ -34,7 +34,7 @@ app.use((req, res, next) => {
 
   // Check if origin is allowed
   let allowedOrigin = '*';
-  
+
   if (origin) {
     // Check if origin is in the allowed list
     const isAllowed = allowedOrigins.some(allowed => {
@@ -45,10 +45,10 @@ app.use((req, res, next) => {
       }
       return allowed === origin;
     });
-    
+
     // Also allow any vercel.app domain (for preview deployments)
     const isVercel = origin.includes('vercel.app');
-    
+
     if (isAllowed || isVercel) {
       allowedOrigin = origin;
     }
@@ -60,9 +60,9 @@ app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Accept-Language');
   res.setHeader('Access-Control-Max-Age', '86400');
-  
+
   console.log('🔥 CORS:', req.method, req.url, 'from', origin, '->', allowedOrigin);
-  
+
   // Handle preflight OPTIONS requests
   if (req.method === 'OPTIONS') {
     console.log('✅ CORS preflight OK');
@@ -79,7 +79,7 @@ const fs = require('fs');
 
 function runMigrations() {
   console.log('Running database migrations...');
-  
+
   const initPath = './src/models/init.js';
   if (fs.existsSync(initPath)) {
     console.log('Running init.js...');
@@ -157,6 +157,7 @@ const reportRoutes = require('./routes/reports');
 const aiRoutes = require('./routes/aiChatbot');
 const jobRoutes = require('./routes/jobs');
 const adminChatbotRoutes = require('./routes/adminChatbot');
+const paymentRoutes = require('./routes/payments');   // 👈 ADDED
 const { setupChatSocket } = require('./sockets/chat');
 const { setIo: setNotificationIo } = require('./routes/notifications');
 const db = require('./config/database');
@@ -186,6 +187,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/admin/chatbot', adminChatbotRoutes);
+app.use('/api/payments', paymentRoutes);   // 👈 ADDED
 
 // ============================================
 // PUBLIC ENDPOINTS
@@ -264,17 +266,17 @@ const io = new Server(server, {
     origin: function (origin, callback) {
       // Allow requests with no origin (like mobile apps)
       if (!origin) return callback(null, true);
-      
+
       // Allow all vercel.app domains
       if (origin.includes('vercel.app')) {
         return callback(null, true);
       }
-      
+
       // Allow localhost for development
       if (origin.includes('localhost')) {
         return callback(null, true);
       }
-      
+
       // Allow specific domains
       const allowedOrigins = [
         'https://sitterspot-backend.onrender.com',
@@ -283,11 +285,11 @@ const io = new Server(server, {
         'https://carenest-red.vercel.app',
         'https://carenest-rzmg.vercel.app',
       ];
-      
+
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      
+
       callback(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
