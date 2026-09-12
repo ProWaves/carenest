@@ -717,7 +717,10 @@ router.put('/:id/cancel-selection', authenticate, authorize('parent'), async (re
     }
 });
 
-// POST /api/jobs/:id/report - Report a user from a job
+// ============================================
+// ✅ FIXED: POST /api/jobs/:id/report
+// Column name corrected from `reported_id` → `reported_user_id`
+// ============================================
 router.post('/:id/report', authenticate, async (req, res) => {
     try {
         const { id } = req.params;
@@ -743,7 +746,7 @@ router.post('/:id/report', authenticate, async (req, res) => {
 
         // Check if report already exists
         const existing = await db.query(
-            'SELECT id FROM reports WHERE job_post_id = $1 AND reporter_id = $2 AND reported_id = $3',
+            'SELECT id FROM reports WHERE job_post_id = $1 AND reporter_id = $2 AND reported_user_id = $3',
             [id, req.user.id, reported_user_id]
         );
         if (existing.rows.length > 0) {
@@ -751,7 +754,7 @@ router.post('/:id/report', authenticate, async (req, res) => {
         }
 
         const result = await db.query(
-            `INSERT INTO reports (reporter_id, reported_id, job_post_id, reason, description)
+            `INSERT INTO reports (reporter_id, reported_user_id, job_post_id, reason, description)
              VALUES ($1, $2, $3, $4, $5) RETURNING *`,
             [req.user.id, reported_user_id, id, reason, description || null]
         );
@@ -1450,7 +1453,7 @@ router.get('/admin/reports', authenticate, authorize('admin'), async (req, res) 
                 j.id as job_id
             FROM reports r
             JOIN users rep ON rep.id = r.reporter_id
-            JOIN users reported ON reported.id = r.reported_id
+            JOIN users reported ON reported.id = r.reported_user_id
             LEFT JOIN job_posts j ON j.id = r.job_post_id
             WHERE ${whereClause}
             ORDER BY r.created_at DESC
