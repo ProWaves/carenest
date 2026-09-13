@@ -135,9 +135,11 @@ router.get('/nearby', async (req, res) => {
           bp.share_location, ul.latitude, ul.longitude, ul.location_updated_at, ul.is_sharing,
           (
             6371 * acos(
-              cos(radians($1)) * cos(radians(ul.latitude)) *
-              cos(radians(ul.longitude) - radians($2)) +
-              sin(radians($1)) * sin(radians(ul.latitude))
+              LEAST(1, GREATEST(-1,
+                cos(radians($1)) * cos(radians(ul.latitude)) *
+                cos(radians(ul.longitude) - radians($2)) +
+                sin(radians($1)) * sin(radians(ul.latitude))
+              ))
             )
           ) AS distance,
           (SELECT COALESCE(AVG(rating), 0) FROM reviews WHERE babysitter_id = u.id) as avg_rating,
@@ -1286,11 +1288,15 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
+  // ✅ Clamp `a` to [0, 1]. Floating-point rounding can push it just
+  //    past 1 for near-identical coordinates, which would make
+  //    Math.sqrt(1 - a) NaN.
+  const a = Math.min(1, Math.max(0,
     Math.sin(dLat/2) * Math.sin(dLat/2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+  ));
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
