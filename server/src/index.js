@@ -8,12 +8,12 @@ const app = express();
 const server = http.createServer(app);
 
 // ============================================
-// ULTIMATE CORS FIX - FIRST MIDDLEWARE
+// CORS MIDDLEWARE — FIRST MIDDLEWARE
 // ============================================
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // List of allowed origins
+  // List of allowed origins (exact matches + wildcard patterns)
   const allowedOrigins = [
     'https://sitterspot-backend.onrender.com',
     'https://carenest-rzmg-seven.vercel.app',
@@ -28,46 +28,61 @@ app.use((req, res, next) => {
     'http://localhost:3000',
     'exp://localhost:8081',
     'exp://10.144.149.5:8081',
-    'http://192.168.1.*',
-    'http://10.*.*.*'
   ];
 
-  // Check if origin is allowed
-  let allowedOrigin = '*';
+  // Decide whether this origin is allowed
+  let allowedOrigin = null;
 
   if (origin) {
-    // Check if origin is in the allowed list
-    const isAllowed = allowedOrigins.some(allowed => {
-      // Handle wildcard patterns
+    // Exact / wildcard match against the allowed list
+    const isAllowed = allowedOrigins.some((allowed) => {
       if (allowed.includes('*')) {
-        const pattern = allowed.replace(/\*/g, '.*');
-        return new RegExp(pattern).test(origin);
+        // Escape regex special chars, then convert * -> .*
+        const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+        const pattern = escaped.replace(/\*/g, '.*');
+        return new RegExp(`^${pattern}$`).test(origin);
       }
       return allowed === origin;
     });
 
-    // Also allow any vercel.app domain (for preview deployments)
-    const isVercel = origin.includes('vercel.app');
+    // Allow any *.vercel.app preview deployment
+    const isVercel = /\.vercel\.app$/.test(origin);
 
-    if (isAllowed || isVercel) {
+    // Allow Android emulator / local dev hosts (10.x, 192.168.x, localhost)
+    const isLocalDev = /^https?:\/\/(localhost|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin);
+
+    if (isAllowed || isVercel || isLocalDev) {
       allowedOrigin = origin;
     }
   }
 
-  // Set CORS headers - Use the actual origin, not '*'
-  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  // IMPORTANT:
+  // If the origin is NOT allowed we must NOT send `*`.
+  // With `Access-Control-Allow-Credentials: true`, a `*` origin is rejected
+  // by every browser, so the response would fail even for valid callers.
+  // Leaving the header off lets the browser block disallowed origins naturally.
+  if (allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Accept-Language');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Requested-With, Accept, Origin, Accept-Language'
+  );
   res.setHeader('Access-Control-Max-Age', '86400');
 
-  console.log('🔥 CORS:', req.method, req.url, 'from', origin, '->', allowedOrigin);
+  console.log('🔥 CORS:', req.method, req.url, 'from', origin, '->', allowedOrigin || 'BLOCKED');
 
   // Handle preflight OPTIONS requests
   if (req.method === 'OPTIONS') {
-    console.log('✅ CORS preflight OK');
+    // Return 204 regardless. If the origin was disallowed, no CORS headers
+    // were set above, so the browser will still reject the preflight.
     return res.sendStatus(204);
   }
+
   next();
 });
 
@@ -268,12 +283,12 @@ const io = new Server(server, {
       if (!origin) return callback(null, true);
 
       // Allow all vercel.app domains
-      if (origin.includes('vercel.app')) {
+      if (/\.vercel\.app$/.test(origin)) {
         return callback(null, true);
       }
 
-      // Allow localhost for development
-      if (origin.includes('localhost')) {
+      // Allow localhost / local network for development
+      if (/^https?:\/\/(localhost|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)) {
         return callback(null, true);
       }
 
