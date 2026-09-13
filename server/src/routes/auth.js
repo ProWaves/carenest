@@ -1,5 +1,4 @@
-// server/src/routes/auth.js - Updated login endpoint
-
+// server/src/routes/auth.js
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -69,19 +68,78 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+
+    // ============================================================
+    // ✅ FIX: Always run bcrypt.compare — even when the email doesn't
+    //         exist — so response times don't leak whether an account
+    //         is registered.
+    //
+    //         Previously:
+    //           1) 401 if email not found
+    //           2) 403 if account suspended (BEFORE password check)
+    //           3) 401 if password wrong
+    //         which allowed user enumeration + suspension-reason leaks
+    //         (without knowing the password) and a timing side-channel.
+    //
+    //         Now:
+    //           1) Always bcrypt.compare against the real hash OR a
+    //              dummy hash if the user doesn't exist.
+    //           2) Return 401 "Invalid email or password" for any
+    //              mismatch — no distinction between "no user" and
+    //              "wrong password".
+    //           3) Only AFTER a correct password do we reveal
+    //              suspension / deactivation details.
+    // ============================================================
+
+    const DUMMY_HASH = '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidin';
+
     if (result.rows.length === 0) {
+      // Burn the same CPU time as a real compare so timing is flat.
+      await bcrypt.compare(password, DUMMY_HASH).catch(() => {});
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
     const user = result.rows[0];
 
-    // ============================================
-    // CHECK IF ACCOUNT IS BLOCKED/SUSPENDED
-    // ============================================
-    
-    // Check if account is deactivated
-    if (!user.is_active) {
-      return res.status(403).json({ 
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    // ============================================================
+    // Password is correct from here on. It's now safe to reveal
+    // account state to the legitimate owner.
+    // ============================================================
+
+    // If suspension has expired, auto-restore and continue.
+    if (user.suspended_at && user.suspension_end_date) {
+      const now = new Date();
+      const endDate = new Date(user.suspension_end_date);
+
+      if (endDate <= now) {
+        await db.query(
+          `UPDATE users 
+           SET suspended_at = NULL,
+               suspension_reason = NULL,
+               suspension_end_date = NULL,
+               is_active = true
+           WHERE id = $1`,
+          [user.id]
+        );
+
+        const token = jwt.sign(
+          { id: user.id, role: user.role },
+          process.env.JWT_SECRET,
+          { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+        );
+        const { password: _, ...userData } = user;
+        return res.json({ token, user: userData });
+      }
+    }
+
+    // Deactivated
+    if (!user.is_active && !user.suspended_at) {
+      return res.status(403).json({
         error: 'account_deactivated',
         message: 'Your account has been deactivated. Please contact support to reactivate your account.',
         supportEmail: 'support@carenest.com',
@@ -90,40 +148,20 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Check if account is suspended
+    // Suspended (still active in the window)
     if (user.suspended_at) {
       let suspensionMessage = 'Your account has been suspended.';
       let suspensionDetails = '';
 
-      // Check if there's a suspension end date
       if (user.suspension_end_date) {
-        const now = new Date();
-        const endDate = new Date(user.suspension_end_date);
-        
-        if (endDate > now) {
-          const daysRemaining = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+        const daysRemaining = Math.ceil(
+          (new Date(user.suspension_end_date) - new Date()) / (1000 * 60 * 60 * 24)
+        );
+        if (daysRemaining > 0) {
           suspensionDetails = `Your account is suspended for ${daysRemaining} more day${daysRemaining > 1 ? 's' : ''}.`;
-        } else {
-          // Suspension has expired, automatically restore
-          await db.query(
-            `UPDATE users 
-             SET suspended_at = NULL,
-                 suspension_reason = NULL,
-                 suspension_end_date = NULL,
-                 is_active = true
-             WHERE id = $1`,
-            [user.id]
-          );
-          // Continue with login
-          const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
-            expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-          });
-          const { password: _, ...userData } = user;
-          return res.json({ token, user: userData });
         }
       }
 
-      // If no end date or still suspended
       if (user.suspension_reason) {
         suspensionMessage = `Your account has been suspended. Reason: ${user.suspension_reason}`;
       }
@@ -141,20 +179,12 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // ============================================
-    // CHECK PASSWORD
-    // ============================================
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
-    }
-
-    // ============================================
-    // GENERATE TOKEN
-    // ============================================
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-    });
+    // All clear — generate token
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
 
     const { password: _, ...userData } = user;
     res.json({ token, user: userData });
