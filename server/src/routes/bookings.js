@@ -132,6 +132,72 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
     try {
       await client.query('BEGIN');
 
+      // ============================================================
+      // ✅ NEW: reject if this babysitter is already booked for an
+      //         overlapping window. Uses the (start_date, end_date,
+      //         start_time, end_time) tuple to detect overlap.
+      // ============================================================
+      const conflict = await client.query(
+        `SELECT id FROM bookings
+         WHERE babysitter_id = $1
+           AND status NOT IN ('cancelled', 'completed')
+           AND (
+             (start_date <= $2 AND end_date >= $2)
+             OR (start_date <= $3 AND end_date >= $3)
+             OR (start_date >= $2 AND end_date <= $3)
+           )
+           AND (
+             (start_time <= $4 AND end_time >= $4)
+             OR (start_time <= $5 AND end_time >= $5)
+             OR (start_time >= $4 AND end_time <= $5)
+           )
+         LIMIT 1`,
+        [babysitter_id, start_date, end_date, start_time, end_time]
+      );
+
+      if (conflict.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'This babysitter is already booked for an overlapping time slot.',
+          conflicting_booking_id: conflict.rows[0].id
+        });
+      }
+
+      // ============================================================
+      // ✅ NEW: if slot_ids were provided, verify they (a) belong to
+      //         this babysitter, (b) are published, (c) are not booked.
+      //         Lock the rows with FOR UPDATE so two concurrent
+      //         bookings can't both claim the same slot.
+      // ============================================================
+      let validSlotIds = [];
+      if (slot_ids && Array.isArray(slot_ids) && slot_ids.length > 0) {
+        const slotsRes = await client.query(
+          `SELECT a.id
+           FROM babysitter_availability a
+           JOIN babysitter_profiles bp ON bp.id = a.babysitter_id
+           WHERE a.id = ANY($1::int[])
+             AND bp.user_id = $2
+             AND a.is_published = true
+             AND a.is_available = true
+             AND a.is_booked = false
+           FOR UPDATE`,
+          [slot_ids, babysitter_id]
+        );
+
+        validSlotIds = slotsRes.rows.map(r => r.id);
+
+        // If the parent requested slots we can't honor, fail the whole
+        // booking rather than silently dropping some of them.
+        if (validSlotIds.length !== slot_ids.length) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'Some selected slots are no longer available.',
+            requested: slot_ids,
+            available: validSlotIds
+          });
+        }
+      }
+
       // Create booking
       const result = await client.query(
         `INSERT INTO bookings (parent_id, babysitter_id, child_id, start_date, end_date, start_time, end_time, total_hours, total_amount, notes)
@@ -142,18 +208,17 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 
       const booking = result.rows[0];
 
-      // If slot_ids provided, mark them as booked
-      if (slot_ids && Array.isArray(slot_ids) && slot_ids.length > 0) {
-        for (const slotId of slot_ids) {
-          await client.query(
-            `UPDATE babysitter_availability 
-             SET is_booked = true, 
-                 booked_booking_id = $1,
-                 booked_at = CURRENT_TIMESTAMP
-             WHERE id = $2`,
-            [booking.id, slotId]
-          );
-        }
+      // Mark the verified slots as booked. Because we locked them above
+      // with FOR UPDATE, this can't race with another booking.
+      if (validSlotIds.length > 0) {
+        await client.query(
+          `UPDATE babysitter_availability 
+           SET is_booked = true, 
+               booked_booking_id = $1,
+               booked_at = CURRENT_TIMESTAMP
+           WHERE id = ANY($2::int[])`,
+          [booking.id, validSlotIds]
+        );
       }
 
       await client.query('COMMIT');
