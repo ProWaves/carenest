@@ -115,12 +115,24 @@ How can I help you today?`,
 
       await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
 
+      // ============================================================
+      // ✅ FIX: Snapshot the session at message-creation time, so the
+      //         "Proceed" button on this specific message always fires
+      //         the action that belongs to *this* message — even if the
+      //         user later typed something else and overwrote the
+      //         global sessionData state.
+      // ============================================================
       const aiMessage = {
         id: Date.now() + 1,
         text: res.data.response,
         sender: 'ai',
         timestamp: new Date(),
         actionRequired: res.data.actionRequired,
+        // Snapshot of the session as of *this* reply. The Proceed
+        // button will send this exact snapshot to the server.
+        sessionSnapshot: res.data.actionRequired
+          ? { ...sessionData, ...(res.data.sessionData || {}), actionRequired: res.data.actionRequired }
+          : null,
         intents: res.data.intents,
       };
 
@@ -157,21 +169,17 @@ How can I help you today?`,
   };
 
   // ============================================================
-  // ✅ FIX: Always clear the pending action + session, whether the
-  //         action succeeds or fails. Previously only success cleared
-  //         the session, so a failed action left actionRequired set
-  //         and the next message re-rendered a stale "Proceed" button
-  //         — clicking it could fire a duplicate booking / refund /
-  //         report.
-  //
-  //         Also pass the current sessionData to the server so it
-  //         doesn't have to remember it across requests.
+  // handleQuickAction now receives the message's session snapshot
+  // (see the Proceed button onClick below) instead of reading the
+  // global sessionData state, which may have moved on.
   // ============================================================
-  const handleQuickAction = async (action, data) => {
+  const handleQuickAction = async (action, snapshot) => {
     setLoading(true);
     try {
-      // Send the current session data so the server has full context.
-      const res = await API.post('/ai/action', { action, data: { ...data, ...sessionData } });
+      const res = await API.post('/ai/action', {
+        action,
+        data: snapshot || {},
+      });
       if (res.data.success) {
         const successMsg = {
           id: Date.now(),
@@ -193,8 +201,6 @@ How can I help you today?`,
       }]);
       addToast('Failed to complete action', 'error');
     } finally {
-      // Whether it succeeded or failed, clear the pending session so
-      // the next message can't accidentally re-trigger the same action.
       setSessionData({});
       setLoading(false);
     }
@@ -400,74 +406,88 @@ How can I help you today?`,
           background: 'var(--bg-secondary, #f8fafc)',
         }}
       >
-        {messages.map((msg, index) => (
-          <div
-            key={msg.id || index}
-            style={{
-              display: 'flex',
-              justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-              marginBottom: '12px',
-              animation: 'messageSlide 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-          >
+        {messages.map((msg, index) => {
+          // ============================================================
+          // ✅ Only the most recent actionable message gets a live button.
+          //    Older actionRequired messages render as plain text so a
+          //    user scrolling up can't fire a stale action by accident.
+          // ============================================================
+          const isLatest = index === messages.length - 1;
+          const showButton = msg.actionRequired && isLatest;
+
+          return (
             <div
+              key={msg.id || index}
               style={{
-                maxWidth: '85%',
-                padding: '12px 16px',
-                borderRadius: msg.sender === 'user'
-                  ? '16px 16px 4px 16px'
-                  : '16px 16px 16px 4px',
-                background: msg.sender === 'user'
-                  ? 'linear-gradient(135deg, #6366f1, #7c3aed)'
-                  : 'var(--bg-card, #ffffff)',
-                color: msg.sender === 'user'
-                  ? 'white'
-                  : 'var(--text-primary, #1e293b)',
-                border: msg.sender === 'ai'
-                  ? '1px solid var(--border-color, #e2e8f0)'
-                  : 'none',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                boxShadow: msg.sender === 'ai'
-                  ? '0 1px 3px rgba(0,0,0,0.06)'
-                  : '0 4px 12px rgba(99,102,241,0.25)',
-                position: 'relative',
+                display: 'flex',
+                justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                marginBottom: '12px',
+                animation: 'messageSlide 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               }}
             >
-              {msg.text}
-              {msg.actionRequired && (
-                <div style={{ marginTop: '12px' }}>
-                  <button
-                    onClick={() => handleQuickAction(msg.actionRequired, {})}
-                    style={{
-                      padding: '6px 16px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: 'var(--primary, #6366f1)',
-                      color: 'white',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                  >
-                    ✅ Proceed
-                  </button>
+              <div
+                style={{
+                  maxWidth: '85%',
+                  padding: '12px 16px',
+                  borderRadius: msg.sender === 'user'
+                    ? '16px 16px 4px 16px'
+                    : '16px 16px 16px 4px',
+                  background: msg.sender === 'user'
+                    ? 'linear-gradient(135deg, #6366f1, #7c3aed)'
+                    : 'var(--bg-card, #ffffff)',
+                  color: msg.sender === 'user'
+                    ? 'white'
+                    : 'var(--text-primary, #1e293b)',
+                  border: msg.sender === 'ai'
+                    ? '1px solid var(--border-color, #e2e8f0)'
+                    : 'none',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  boxShadow: msg.sender === 'ai'
+                    ? '0 1px 3px rgba(0,0,0,0.06)'
+                    : '0 4px 12px rgba(99,102,241,0.25)',
+                  position: 'relative',
+                  opacity: msg.actionRequired && !isLatest ? 0.6 : 1,
+                }}
+              >
+                {msg.text}
+                {showButton && (
+                  <div style={{ marginTop: '12px' }}>
+                    <button
+                      onClick={() => handleQuickAction(msg.actionRequired, msg.sessionSnapshot)}
+                      disabled={loading}
+                      style={{
+                        padding: '6px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: loading ? 'var(--text-muted, #94a3b8)' : 'var(--primary, #6366f1)',
+                        color: 'white',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        fontSize: '13px',
+                        fontWeight: '500',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!loading) e.currentTarget.style.transform = 'scale(1.02)';
+                      }}
+                      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                      ✅ Proceed
+                    </button>
+                  </div>
+                )}
+                <div style={{
+                  fontSize: '10px',
+                  opacity: 0.6,
+                  marginTop: '6px',
+                  textAlign: msg.sender === 'user' ? 'right' : 'left',
+                }}>
+                  {formatTime(msg.timestamp)}
                 </div>
-              )}
-              <div style={{
-                fontSize: '10px',
-                opacity: 0.6,
-                marginTop: '6px',
-                textAlign: msg.sender === 'user' ? 'right' : 'left',
-              }}>
-                {formatTime(msg.timestamp)}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Typing indicator */}
         {isTyping && (
