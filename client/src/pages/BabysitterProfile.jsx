@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import Rating from '../components/Rating';
 import { useToast } from '../components/Toast';
-import AIChatbot from '../components/AIChatbot';
+import AIChatbot from './components/AIChatbotGate';
 import ReportModal from '../components/ReportModal';
 
 function BabysitterProfile() {

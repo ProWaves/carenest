@@ -5,7 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import Rating from '../components/Rating';
 import { SkeletonList } from '../components/Skeleton';
 import BackButton from '../components/BackButton';
-import AIChatbot from '../components/AIChatbot';
+import AIChatbot from './components/AIChatbotGate';
 import AIMap from '../components/AIMap';
 
 function FindBabysitters() {

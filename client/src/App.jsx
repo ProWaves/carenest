@@ -6,7 +6,7 @@ import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Footer from './components/Footer';
-import AIChatbot from './components/AIChatbot';
+import AIChatbot from './components/AIChatbotGate';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';

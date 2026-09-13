@@ -6,7 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../components/Toast';
 import PhoneInput from '../components/PhoneInput';
 import BackButton from '../components/BackButton';
-import AIChatbot from '../components/AIChatbot';
+import AIChatbot from './components/AIChatbotGate';
 
 function ProfilePage() {
   const { user, setUser } = useAuth();

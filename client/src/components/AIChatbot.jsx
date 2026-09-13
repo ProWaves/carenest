@@ -1,4 +1,3 @@
-// client/src/components/AIChatbot.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -20,12 +19,10 @@ function AIChatbot({ isEmbedded = false, onClose, initialMessage }) {
   const inputRef = useRef(null);
 
   // ============================================
-  // ROLE CHECK: Only Parents can use AI Chatbot
+  // NOTE: the "only parents can use this" check lives in AIChatbotGate.
+  //       Do NOT add an early return here — it would break the Rules of
+  //       Hooks if the user's role ever changed mid-session.
   // ============================================
-  // If user is logged in and NOT a parent, don't render anything
-  if (user && user.role !== 'parent') {
-    return null;
-  }
 
   const quickSuggestions = [
     { icon: '📅', label: 'Book a babysitter', text: 'I want to book a babysitter for this weekend' },
@@ -41,6 +38,7 @@ function AIChatbot({ isEmbedded = false, onClose, initialMessage }) {
     if (isOpen && messages.length === 0) {
       loadHistory();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // Focus input when chat opens
@@ -63,7 +61,7 @@ function AIChatbot({ isEmbedded = false, onClose, initialMessage }) {
         sender: msg.sender_id === user?.id ? 'user' : 'ai',
         timestamp: msg.created_at,
       }));
-      
+
       if (history.length === 0 || history.every(m => m.sender === 'user')) {
         // Welcome message
         setMessages([
@@ -85,7 +83,7 @@ How can I help you today?`,
       } else {
         setMessages(history.reverse());
       }
-      
+
       // Show suggestions after welcome
       setTimeout(() => setSuggestions(quickSuggestions), 500);
     } catch (error) {
@@ -138,10 +136,10 @@ How can I help you today?`,
         actionRequired: res.data.actionRequired,
         intents: res.data.intents,
       };
-      
+
       setMessages(prev => [...prev, aiMessage]);
       setIsTyping(false);
-      
+
       if (res.data.sessionData) {
         setSessionData(res.data.sessionData);
       }
@@ -324,12 +322,12 @@ How can I help you today?`,
           </div>
           <div>
             <strong style={{ fontSize: '16px', display: 'block' }}>AI Assistant</strong>
-            <div style={{ 
-              fontSize: '11px', 
-              opacity: 0.8, 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '4px' 
+            <div style={{
+              fontSize: '11px',
+              opacity: 0.8,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
             }}>
               <span style={{
                 width: '8px',
@@ -416,22 +414,22 @@ How can I help you today?`,
               style={{
                 maxWidth: '85%',
                 padding: '12px 16px',
-                borderRadius: msg.sender === 'user' 
-                  ? '16px 16px 4px 16px' 
+                borderRadius: msg.sender === 'user'
+                  ? '16px 16px 4px 16px'
                   : '16px 16px 16px 4px',
-                background: msg.sender === 'user' 
-                  ? 'linear-gradient(135deg, #6366f1, #7c3aed)' 
+                background: msg.sender === 'user'
+                  ? 'linear-gradient(135deg, #6366f1, #7c3aed)'
                   : 'var(--bg-card, #ffffff)',
-                color: msg.sender === 'user' 
-                  ? 'white' 
+                color: msg.sender === 'user'
+                  ? 'white'
                   : 'var(--text-primary, #1e293b)',
-                border: msg.sender === 'ai' 
-                  ? '1px solid var(--border-color, #e2e8f0)' 
+                border: msg.sender === 'ai'
+                  ? '1px solid var(--border-color, #e2e8f0)'
                   : 'none',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
-                boxShadow: msg.sender === 'ai' 
-                  ? '0 1px 3px rgba(0,0,0,0.06)' 
+                boxShadow: msg.sender === 'ai'
+                  ? '0 1px 3px rgba(0,0,0,0.06)'
                   : '0 4px 12px rgba(99,102,241,0.25)',
                 position: 'relative',
               }}
@@ -470,13 +468,13 @@ How can I help you today?`,
             </div>
           </div>
         ))}
-        
+
         {/* Typing indicator */}
         {isTyping && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '12px' }}>
-            <div style={{ 
-              padding: '12px 16px', 
-              background: 'var(--bg-card, #ffffff)', 
+            <div style={{
+              padding: '12px 16px',
+              background: 'var(--bg-card, #ffffff)',
               borderRadius: '16px 16px 16px 4px',
               border: '1px solid var(--border-color, #e2e8f0)',
               display: 'flex',
@@ -596,11 +594,11 @@ How can I help you today?`,
             padding: '0 18px',
             borderRadius: '12px',
             border: 'none',
-            background: loading || !input.trim() 
-              ? 'var(--border-color, #e2e8f0)' 
+            background: loading || !input.trim()
+              ? 'var(--border-color, #e2e8f0)'
               : 'linear-gradient(135deg, #6366f1, #7c3aed)',
-            color: loading || !input.trim() 
-              ? 'var(--text-muted, #94a3b8)' 
+            color: loading || !input.trim()
+              ? 'var(--text-muted, #94a3b8)'
               : 'white',
             cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
             opacity: loading || !input.trim() ? 0.6 : 1,

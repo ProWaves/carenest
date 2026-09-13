@@ -6,7 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
 import { playMessageSound } from '../utils/sounds';
 import BackButton from '../components/BackButton';
-import AIChatbot from '../components/AIChatbot';
+import AIChatbot from './components/AIChatbotGate';
 
 function ChatPage() {
   const { userId: paramUserId } = useParams();
