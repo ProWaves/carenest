@@ -5,7 +5,12 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "db:init": "node src/models/init.js",
+    "db:migrate": "node src/models/migrate.js",
+    "db:seed": "node src/models/seed.js",
+    "db:migrations": "node src/db/migrations/003_add_review_and_admin_features.js && node src/db/migrations/004_add_user_locations.js && node src/db/migrations/005_enhance_reports_table.js && node src/db/migrations/007_add_availability_publishing.js && node src/db/migrations/008_add_availability_booking_integration.js && node src/db/migrations/010_add_job_posts_table.js && node src/db/migrations/011_add_location_tracking.js && node src/db/migrations/012_add_refunds_table.js && node src/db/migrations/013_fix_reports_columns.js && node src/db/migrations/014_add_missing_columns.js && node src/db/migrations/015_add_missing_columns_v2.js && node src/db/migrations/016_add_cancellation_reason.js && node src/db/migrations/020_add_job_notification_indexes.js",
+    "db:setup": "npm run db:init && npm run db:migrations && npm run db:seed"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

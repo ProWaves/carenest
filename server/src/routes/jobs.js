@@ -88,25 +88,60 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
                 start_date, end_date, start_time, end_time, hourly_rate, location || null]
         );
 
-        // Notify available babysitters
-        const babysitters = await db.query(
-            `SELECT u.id FROM users u
+        const newJob = result.rows[0];
+
+        // ============================================================
+        // ✅ FIX: Notify ONLY babysitters who can actually take this job.
+        //
+        // Previously we notified every approved babysitter on the
+        // platform, which on a busy marketplace means hundreds of
+        // notifications + FCM pushes per job post.
+        //
+        // Now we filter to:
+        //   • Same city (case-insensitive), or any city if the job has
+        //     no location set.
+        //   • Account active, not suspended, profile approved.
+        //   • Has at least one published availability slot that:
+        //       - falls on the job's start_date day-of-week
+        //       - is not already booked
+        // ============================================================
+        const matchingBabysitters = await db.query(
+            `SELECT DISTINCT u.id
+             FROM users u
              JOIN babysitter_profiles bp ON bp.user_id = u.id
-             WHERE u.role = 'babysitter' AND u.is_active = true AND u.suspended_at IS NULL
-             AND bp.status = 'approved'`
+             JOIN babysitter_availability a ON a.babysitter_id = bp.id
+             WHERE u.role = 'babysitter'
+               AND u.is_active = true
+               AND u.suspended_at IS NULL
+               AND bp.status = 'approved'
+               AND (
+                 $1::text IS NULL
+                 OR $1::text = ''
+                 OR LOWER(u.city) = LOWER($1)
+               )
+               AND a.is_published = true
+               AND a.is_available = true
+               AND a.is_booked = false
+               AND a.day_of_week = EXTRACT(DOW FROM $2::date)`,
+            [location || null, start_date]
         );
 
-        for (const bs of babysitters.rows) {
+        console.log(
+            `📢 Notifying ${matchingBabysitters.rows.length} matching babysitters ` +
+            `for job #${newJob.id} (${location || 'no location'}, ${start_date})`
+        );
+
+        for (const bs of matchingBabysitters.rows) {
             await createNotification(
                 bs.id,
                 'new_job',
                 '📢 New Job Available!',
                 `${req.user.first_name} ${req.user.last_name} is looking for a babysitter. ${title}`,
-                `/jobs/${result.rows[0].id}`
+                `/jobs/${newJob.id}`
             );
         }
 
-        res.status(201).json(result.rows[0]);
+        res.status(201).json(newJob);
     } catch (error) {
         console.error('❌ Create job post error:', error);
         res.status(500).json({ error: 'Server error.' });
@@ -990,12 +1025,7 @@ router.post('/:id/apply', authenticate, authorize('babysitter'), async (req, res
     }
 });
 
-// ============================================
-// ✅ FIXED: PUT /api/jobs/:id/withdraw-application
-// The job_applications CHECK constraint allows:
-//   'pending' | 'accepted' | 'rejected' | 'withdrawn'
-// We were writing 'cancelled', which caused a constraint violation (500).
-// ============================================
+// PUT /api/jobs/:id/withdraw-application - Withdraw application
 router.put('/:id/withdraw-application', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -1083,10 +1113,7 @@ router.put('/:id/complete', authenticate, authorize('babysitter'), async (req, r
     }
 });
 
-// ============================================
-// ✅ FIXED: PUT /api/jobs/:id/cancel (babysitter cancels)
-// Same constraint issue — must write 'withdrawn', not 'cancelled'.
-// ============================================
+// PUT /api/jobs/:id/cancel - Babysitter cancels the job
 router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
