@@ -1,5 +1,5 @@
 // client/src/components/Header.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
@@ -14,11 +14,17 @@ function Header() {
   const location = useLocation();
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const notifRef = useRef(null);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  // ✅ Derive unread count from the list. This is the single source of
+  //    truth, so a duplicate insert can never make the badge wrong.
+  const unreadCount = useMemo(
+    () => notifications.filter(n => !n.is_read).length,
+    [notifications]
+  );
 
   // Live clock
   useEffect(() => {
@@ -64,10 +70,8 @@ function Header() {
         .then((r) => {
           if (cancelled) return;
           const list = r.data?.notifications ?? [];
-          const unread = r.data?.unread ?? 0;
-          console.log('🔔 [Header] Notifications fetched:', { count: list.length, unread });
+          console.log('🔔 [Header] Notifications fetched:', { count: list.length });
           setNotifications(list);
-          setUnreadCount(unread);
         })
         .catch((err) => {
           if (cancelled) return;
@@ -84,9 +88,14 @@ function Header() {
     if (!socket) return;
 
     const handleNotif = (notif) => {
-      playNotificationSound();
-      setNotifications((prev) => [notif, ...prev]);
-      setUnreadCount((prev) => prev + 1);
+      // ✅ Dedup by id: if this notification is already in the list
+      //    (e.g. we just refetched after a route change), don't add it
+      //    again and don't play the sound twice.
+      setNotifications((prev) => {
+        if (prev.some(n => n.id === notif.id)) return prev;
+        playNotificationSound();
+        return [notif, ...prev];
+      });
     };
 
     socket.on('notification:new', handleNotif);
@@ -110,7 +119,6 @@ function Header() {
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch {}
   };
 
@@ -118,7 +126,6 @@ function Header() {
     try {
       await API.put('/notifications/read-all');
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
     } catch {}
   };
 

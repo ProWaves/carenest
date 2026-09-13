@@ -1,5 +1,5 @@
 // client/src/components/Navbar.jsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -16,10 +16,15 @@ function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const notifRef = useRef(null);
 
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  // ✅ Derive unread from the list — single source of truth.
+  const unreadCount = useMemo(
+    () => notifications.filter(n => !n.is_read).length,
+    [notifications]
+  );
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -29,8 +34,6 @@ function Navbar() {
   const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
   // ── Fetch notifications ────────────────────────────────────
-  // Re-runs whenever the user OR the current route changes.
-  // Logs the result so we can debug in the browser console.
   useEffect(() => {
     if (!user?.id) return;
 
@@ -41,10 +44,8 @@ function Navbar() {
         .then((r) => {
           if (cancelled) return;
           const list = r.data?.notifications ?? [];
-          const unread = r.data?.unread ?? 0;
-          console.log('🔔 [Navbar] Notifications fetched:', { count: list.length, unread });
+          console.log('🔔 [Navbar] Notifications fetched:', { count: list.length });
           setNotifications(list);
-          setUnreadCount(unread);
         })
         .catch((err) => {
           if (cancelled) return;
@@ -61,9 +62,12 @@ function Navbar() {
     if (!socket) return;
 
     const handleNotif = (notif) => {
-      playNotificationSound();
-      setNotifications((prev) => [notif, ...prev]);
-      setUnreadCount((prev) => prev + 1);
+      // ✅ Dedup by id.
+      setNotifications((prev) => {
+        if (prev.some(n => n.id === notif.id)) return prev;
+        playNotificationSound();
+        return [notif, ...prev];
+      });
     };
 
     socket.on('notification:new', handleNotif);
@@ -90,7 +94,6 @@ function Navbar() {
     try {
       await API.put(`/notifications/${id}/read`);
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch {}
   };
 
@@ -98,7 +101,6 @@ function Navbar() {
     try {
       await API.put('/notifications/read-all');
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
     } catch {}
   };
 
@@ -121,7 +123,6 @@ function Navbar() {
         </Link>
 
         <div className="nav-links">
-          {/* Role-based "Find" link */}
           {user?.role === 'babysitter' ? (
             <Link to="/jobs" className={`nav-link ${isActive('/jobs') ? 'active' : ''}`}>
               🔍 Find Jobs
