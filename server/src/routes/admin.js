@@ -4,7 +4,7 @@ const db = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createNotification } = require('../routes/notifications');
 
-const router = express.Router();  // <-- ADD THIS LINE
+const router = express.Router();
 
 // All routes in this file require admin role
 router.use(authenticate, authorize('admin'));
@@ -28,12 +28,12 @@ async function getUserWarnings(userId) {
 
 async function checkAndApplySuspension(userId) {
   const warnings = await getUserWarnings(userId);
-  
+
   if (warnings.count >= 3) {
     // Auto-suspend for 7 days
     const suspensionEnd = new Date();
     suspensionEnd.setDate(suspensionEnd.getDate() + 7);
-    
+
     await db.query(
       `UPDATE users 
        SET suspended_at = CURRENT_TIMESTAMP,
@@ -66,7 +66,7 @@ async function checkAndApplySuspension(userId) {
 
     return { suspended: true, duration: 7, reason: '3 warnings within 90 days' };
   }
-  
+
   return { suspended: false, warnings: warnings.count };
 }
 
@@ -75,10 +75,10 @@ async function checkAndApplySuspension(userId) {
 // ============================================
 router.get('/ping', (req, res) => {
   console.log('✅ Admin route pinged!');
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     message: 'Admin routes are working!',
-    user: req.user 
+    user: req.user
   });
 });
 
@@ -88,7 +88,7 @@ router.get('/ping', (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     console.log('📊 Fetching admin stats');
-    
+
     const [
       totalUsers,
       totalParents,
@@ -114,10 +114,17 @@ router.get('/stats', async (req, res) => {
       db.query("SELECT COUNT(*) as count FROM users WHERE role = 'parent' AND suspended_at IS NULL"),
       db.query("SELECT COUNT(*) as count FROM users WHERE role = 'babysitter' AND suspended_at IS NULL"),
       db.query("SELECT COUNT(*) as count FROM babysitter_profiles WHERE status = 'pending'"),
-      db.query("SELECT COUNT(*) as count FROM babysitter_documents WHERE is_verified = false"),
+      // ✅ FIX: count only documents that have NOT been reviewed yet.
+      //         A document with a rejection_reason has already been seen
+      //         by an admin and is awaiting resubmission — it should not
+      //         show up as "pending review" on the dashboard.
+      db.query("SELECT COUNT(*) as count FROM babysitter_documents WHERE is_verified = false AND (rejection_reason IS NULL OR rejection_reason = '')"),
       db.query('SELECT COUNT(*) as count FROM bookings'),
       db.query("SELECT COUNT(*) as count FROM bookings WHERE status = 'completed'"),
-      db.query("SELECT COUNT(*) as count FROM bookings WHERE status = 'in_progress'"),
+      // ✅ FIX: include 'confirmed' bookings alongside 'in_progress'.
+      //         The frontend's "Active" segment on the donut chart now
+      //         matches what most admins consider active.
+      db.query("SELECT COUNT(*) as count FROM bookings WHERE status IN ('confirmed', 'in_progress')"),
       db.query("SELECT COUNT(*) as count FROM bookings WHERE status = 'cancelled'"),
       db.query("SELECT COALESCE(SUM(total_amount), 0) as total FROM bookings WHERE status = 'completed'"),
       db.query("SELECT COALESCE(SUM(total_amount), 0) as total FROM bookings WHERE status = 'completed' AND EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)"),
@@ -186,8 +193,8 @@ router.get('/stats', async (req, res) => {
   } catch (error) {
     console.error('❌ Stats error:', error);
     console.error('❌ Stack:', error.stack);
-    res.status(500).json({ 
-      error: 'Server error.', 
+    res.status(500).json({
+      error: 'Server error.',
       message: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
@@ -237,7 +244,7 @@ router.get('/babysitters', async (req, res) => {
   try {
     console.log('👶 Fetching babysitters');
     const { status, search } = req.query;
-    
+
     let query = `
       SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.city, u.language, u.gender,
         bp.bio, bp.experience_years, bp.hourly_rate, bp.status, bp.is_verified, bp.skills,
@@ -283,7 +290,7 @@ router.get('/babysitters/:id', async (req, res) => {
   try {
     const { id } = req.params;
     console.log('🔍 Fetching babysitter details for ID:', id);
-    
+
     const result = await db.query(`
       SELECT u.*, bp.*,
         (SELECT json_agg(d.*) FROM babysitter_documents d WHERE d.babysitter_id = bp.id) as documents,
@@ -397,7 +404,7 @@ router.get('/documents', async (req, res) => {
   try {
     console.log('📄 Fetching documents');
     const { status } = req.query;
-    
+
     let query = `
       SELECT d.*, 
         u.id as user_id,
@@ -586,7 +593,7 @@ router.get('/users', async (req, res) => {
   try {
     console.log('👤 Fetching users');
     const { role, search } = req.query;
-    
+
     let query = `
       SELECT id, email, role, first_name, last_name, phone, city, language, gender,
              is_active, avatar_url, suspended_at, suspension_reason, created_at
@@ -657,7 +664,7 @@ router.put('/users/:id/suspend', async (req, res) => {
       parseInt(id),
       suspend ? 'account_suspended' : 'account_restored',
       suspend ? '⚠️ Account Suspended' : '✅ Account Restored',
-      suspend 
+      suspend
         ? `Your account has been suspended. Reason: ${reason}. Please contact support.`
         : 'Your account has been restored. You can now use all features again.',
       '/dashboard'
@@ -670,7 +677,7 @@ router.put('/users/:id/suspend', async (req, res) => {
       [req.user.id, suspend ? 'suspend_user' : 'restore_user', 'user', id, { reason }]
     );
 
-    res.json({ 
+    res.json({
       message: suspend ? 'User suspended.' : 'User restored.',
       user: result.rows[0]
     });
@@ -687,7 +694,7 @@ router.get('/bookings', async (req, res) => {
   try {
     console.log('📅 Fetching bookings');
     const { status, search, start_date, end_date } = req.query;
-    
+
     let query = `
       SELECT b.*, 
         p.first_name as parent_first_name, p.last_name as parent_last_name, p.email as parent_email,
@@ -747,7 +754,7 @@ router.get('/reports', async (req, res) => {
   try {
     console.log('🚨 Fetching reports');
     const { status } = req.query;
-    
+
     let query = `
       SELECT r.*, 
         rep.first_name as reporter_first_name, rep.last_name as reporter_last_name, rep.email as reporter_email,
@@ -817,10 +824,10 @@ router.put('/reports/:id/status', async (req, res) => {
     // If warning was issued, check for auto-suspension
     if (admin_action === 'warning') {
       const warnings = await getUserWarnings(reportData.user_id);
-      
+
       if (warnings.count >= 3) {
         const suspensionResult = await checkAndApplySuspension(reportData.user_id);
-        
+
         // Add suspension info to response
         result.rows[0].autoSuspended = true;
         result.rows[0].suspensionDuration = 7;
@@ -957,7 +964,7 @@ router.post('/notifications', async (req, res) => {
       const roleFilter = target_role === 'all' ? '' : `WHERE role = $1`;
       const params = target_role === 'all' ? [] : [target_role];
       const usersRes = await db.query(`SELECT id FROM users ${roleFilter}`, params);
-      
+
       let count = 0;
       for (const row of usersRes.rows) {
         await createNotification(
@@ -1321,7 +1328,7 @@ router.put('/locations/:userId/toggle', async (req, res) => {
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [req.user.id, 'toggle_location_sharing', 'user', userId, 
+      [req.user.id, 'toggle_location_sharing', 'user', userId,
        JSON.stringify({ is_sharing, babysitter: userCheck.rows[0].first_name + ' ' + userCheck.rows[0].last_name })]
     );
 
@@ -1330,7 +1337,7 @@ router.put('/locations/:userId/toggle', async (req, res) => {
       parseInt(userId),
       'location_sharing_updated',
       is_sharing ? '📍 Location Sharing Enabled by Admin' : '📍 Location Sharing Disabled by Admin',
-      is_sharing 
+      is_sharing
         ? 'Admin has enabled your location sharing. Parents can now see you on the map.'
         : 'Admin has disabled your location sharing. You will not appear on the map to parents.',
       '/dashboard?tab=location'
