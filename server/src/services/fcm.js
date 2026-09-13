@@ -9,6 +9,7 @@
 // ==========================================================================
 const admin = require('firebase-admin');
 const path = require('path');
+const db = require('../config/database');
 require('dotenv').config();
 
 let initialized = false;
@@ -53,6 +54,9 @@ function init() {
 /**
  * Send a push notification to a single user by their FCM token.
  * Silently no-ops if FCM isn't configured or the user has no token.
+ *
+ * ✅ NEW: when Firebase reports the token as invalid or unregistered,
+ *         clear it from the user's row so we stop retrying it forever.
  */
 async function sendPush(fcmToken, { title, body, data = {} }) {
   if (!initialized) init();
@@ -77,6 +81,32 @@ async function sendPush(fcmToken, { title, body, data = {} }) {
     const response = await admin.messaging().send(message);
     console.log('📤 FCM sent:', response);
   } catch (error) {
+    const code = error.code || error.errorInfo?.code || '';
+
+    // ============================================================
+    // ✅ FIX: clear permanently-invalid tokens so we don't retry
+    //         them forever. Firebase documents these error codes as
+    //         "the token will never work again".
+    // ============================================================
+    const INVALID_CODES = new Set([
+      'messaging/invalid-registration-token',
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-argument',
+    ]);
+
+    if (INVALID_CODES.has(code)) {
+      console.warn(`🗑️  FCM token invalid (${code}) — clearing from DB`);
+      try {
+        await db.query(
+          'UPDATE users SET fcm_token = NULL WHERE fcm_token = $1',
+          [fcmToken]
+        );
+      } catch (dbErr) {
+        console.error('Failed to clear invalid FCM token:', dbErr.message);
+      }
+      return;
+    }
+
     console.error('❌ FCM send error:', error.message);
   }
 }

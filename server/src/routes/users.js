@@ -85,13 +85,46 @@ router.post('/avatar', authenticate, upload.single('avatar'), async (req, res) =
 router.post('/fcm-token', authenticate, async (req, res) => {
   try {
     const { fcm_token } = req.body;
-    if (!fcm_token) {
+    if (!fcm_token || typeof fcm_token !== 'string') {
       return res.status(400).json({ error: 'fcm_token is required.' });
     }
+
+    const token = fcm_token.trim();
+
+    // ============================================================
+    // ✅ FIX: validate the FCM token shape before storing it.
+    //
+    // FCM tokens are 150-200 characters of [A-Za-z0-9_\-:].
+    // Anything outside that range is either corrupt, malicious, or
+    // from a client using a different push provider. Storing it
+    // means every future notification will fail silently and the
+    // row will bloat the DB.
+    // ============================================================
+    const FCM_TOKEN_RE = /^[A-Za-z0-9_\-:]{100,250}$/;
+    if (!FCM_TOKEN_RE.test(token)) {
+      return res.status(400).json({
+        error: 'Invalid fcm_token format.',
+        hint: 'Expected 100-250 characters of [A-Za-z0-9_-:].',
+      });
+    }
+
+    // ============================================================
+    // ✅ FIX: FCM tokens are unique per app install. If the token
+    //         was previously registered to a different user (device
+    //         handed over, account switch, etc.), clear it from
+    //         that user first so the two don't race to receive the
+    //         same pushes.
+    // ============================================================
+    await db.query(
+      'UPDATE users SET fcm_token = NULL WHERE fcm_token = $1 AND id != $2',
+      [token, req.user.id]
+    );
+
     await db.query(
       'UPDATE users SET fcm_token = $1 WHERE id = $2',
-      [fcm_token, req.user.id]
+      [token, req.user.id]
     );
+
     res.json({ message: 'FCM token registered.' });
   } catch (error) {
     console.error('Register FCM error:', error);
