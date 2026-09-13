@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../components/Toast';
-import AIChatbot from './components/AIChatbotGate';
+import AIChatbot from '../components/AIChatbotGate';
 import ReportModal from '../components/ReportModal';
 
 function BookingPage() {
