@@ -10,8 +10,21 @@ export function SocketProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef(null);
 
+  // Track the token so we can reconnect when it rotates (e.g. after login
+  // as a different user, or after a token refresh).
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
+
+  // Keep `token` in sync with localStorage. AuthContext writes to
+  // localStorage on login/logout; we poll the value whenever the user
+  // identity changes.
   useEffect(() => {
-    if (!user) {
+    const t = localStorage.getItem('token');
+    setToken(t);
+  }, [user?.id]);
+
+  useEffect(() => {
+    // No user OR no token → tear down any existing socket.
+    if (!user || !token) {
       if (socketRef.current) {
         socketRef.current.removeAllListeners();
         socketRef.current.close();
@@ -22,11 +35,9 @@ export function SocketProvider({ children }) {
       return;
     }
 
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
     // Use Render backend URL for WebSocket
-    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://sitterspot-backend.onrender.com';
+    const SOCKET_URL =
+      import.meta.env.VITE_SOCKET_URL || 'https://sitterspot-backend.onrender.com';
 
     const s = io(SOCKET_URL, {
       auth: { token },
@@ -60,7 +71,7 @@ export function SocketProvider({ children }) {
       setSocket(null);
       setConnected(false);
     };
-  }, [user?.id]);
+  }, [user?.id, token]);
 
   return (
     <SocketContext.Provider value={{ socket, connected }}>
