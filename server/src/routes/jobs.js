@@ -20,13 +20,13 @@ const checkBabysitterAvailability = async (babysitterId, startDate, endDate, sta
             WHERE table_name = 'job_posts' 
             AND column_name = 'selected_babysitter_id'
         `);
-        
+
         // If column doesn't exist, return no conflicts
         if (columnCheck.rows.length === 0) {
             console.log('⚠️ selected_babysitter_id column does not exist, skipping availability check');
             return [];
         }
-        
+
         const query = `
             SELECT j.id, j.start_date, j.end_date, j.start_time, j.end_time, j.status
             FROM job_posts j
@@ -118,7 +118,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 router.get('/parent/applicants/:jobId', authenticate, authorize('parent'), async (req, res) => {
     try {
         const { jobId } = req.params;
-        
+
         console.log('📝 Fetching applicants for job:', jobId);
         console.log('👤 User ID:', req.user.id);
 
@@ -132,17 +132,17 @@ router.get('/parent/applicants/:jobId', authenticate, authorize('parent'), async
 
         if (jobCheck.rows.length === 0) {
             console.log('❌ Job not found:', jobId);
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
                 error: 'Job not found.',
-                jobId: jobId 
+                jobId: jobId
             });
         }
 
         // Check if the job belongs to the current user
         if (jobCheck.rows[0].parent_id !== req.user.id) {
             console.log('❌ Permission denied. Job owner:', jobCheck.rows[0].parent_id, 'Current user:', req.user.id);
-            return res.status(403).json({ 
+            return res.status(403).json({
                 success: false,
                 error: 'You do not have permission to view applicants for this job.'
             });
@@ -218,8 +218,8 @@ router.get('/parent/applicants/:jobId', authenticate, authorize('parent'), async
             stack: error.stack,
             code: error.code
         });
-        
-        res.status(500).json({ 
+
+        res.status(500).json({
             success: false,
             error: 'Failed to fetch applicants',
             details: error.message,
@@ -232,7 +232,7 @@ router.get('/parent/applicants/:jobId', authenticate, authorize('parent'), async
 router.get('/parent', authenticate, authorize('parent'), async (req, res) => {
     try {
         console.log('📝 Fetching jobs for parent:', req.user.id);
-        
+
         const result = await db.query(
             `SELECT j.*,
                 (SELECT COUNT(*) FROM job_applications WHERE job_post_id = j.id) as application_count,
@@ -283,7 +283,7 @@ router.get('/parent', authenticate, authorize('parent'), async (req, res) => {
              ORDER BY j.created_at DESC`,
             [req.user.id]
         );
-        
+
         console.log(`✅ Found ${result.rows.length} jobs for parent`);
         res.json(result.rows);
     } catch (error) {
@@ -293,9 +293,9 @@ router.get('/parent', authenticate, authorize('parent'), async (req, res) => {
             stack: error.stack,
             code: error.code
         });
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Server error.',
-            details: error.message 
+            details: error.message
         });
     }
 });
@@ -530,7 +530,7 @@ router.put('/:id/select', authenticate, authorize('parent'), async (req, res) =>
                 [babysitter_id]
             );
             const hourlyRate = profile.rows[0]?.hourly_rate || job.hourly_rate;
-            
+
             const startDateTime = new Date(`${job.start_date}T${job.start_time}`);
             const endDateTime = new Date(`${job.end_date}T${job.end_time}`);
             const totalHours = Math.max(1, (endDateTime - startDateTime) / (1000 * 60 * 60));
@@ -990,7 +990,12 @@ router.post('/:id/apply', authenticate, authorize('babysitter'), async (req, res
     }
 });
 
-// PUT /api/jobs/:id/withdraw-application - Withdraw application
+// ============================================
+// ✅ FIXED: PUT /api/jobs/:id/withdraw-application
+// The job_applications CHECK constraint allows:
+//   'pending' | 'accepted' | 'rejected' | 'withdrawn'
+// We were writing 'cancelled', which caused a constraint violation (500).
+// ============================================
 router.put('/:id/withdraw-application', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -1005,7 +1010,7 @@ router.put('/:id/withdraw-application', authenticate, authorize('babysitter'), a
 
         await db.query(
             'UPDATE job_applications SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-            ['cancelled', appCheck.rows[0].id]
+            ['withdrawn', appCheck.rows[0].id]
         );
 
         res.json({ message: 'Application withdrawn successfully.' });
@@ -1078,7 +1083,10 @@ router.put('/:id/complete', authenticate, authorize('babysitter'), async (req, r
     }
 });
 
-// PUT /api/jobs/:id/cancel - Babysitter cancels the job
+// ============================================
+// ✅ FIXED: PUT /api/jobs/:id/cancel (babysitter cancels)
+// Same constraint issue — must write 'withdrawn', not 'cancelled'.
+// ============================================
 router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -1126,10 +1134,11 @@ router.put('/:id/cancel', authenticate, authorize('babysitter'), async (req, res
             );
         }
 
-        // Update applications - set this babysitter to cancelled
+        // Update this babysitter's application to 'withdrawn'
+        // (NOT 'cancelled' — the CHECK constraint only allows 'withdrawn')
         await db.query(
             `UPDATE job_applications 
-             SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP 
+             SET status = 'withdrawn', updated_at = CURRENT_TIMESTAMP 
              WHERE job_post_id = $1 AND babysitter_id = $2`,
             [id, req.user.id]
         );
