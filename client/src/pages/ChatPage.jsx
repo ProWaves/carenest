@@ -28,6 +28,7 @@ function ChatPage() {
     activeUserRef.current = activeUser;
   }, [activeUser]);
 
+  // Socket.IO live updates
   useEffect(() => {
     if (!socket) return;
 
@@ -59,19 +60,28 @@ function ChatPage() {
     };
   }, [socket, user?.id]);
 
+  // Load conversation list once
   useEffect(() => {
     API.get('/chat/conversations').then((r) => setConversations(r.data)).catch(console.error);
   }, []);
 
+  // Resolve active user + load messages when route changes
   useEffect(() => {
     if (paramUserId) {
       const conv = conversations.find((c) => c.user_id == paramUserId);
       if (conv) {
         setActiveUser(conv);
       } else {
-        API.get(`/users/profile/${paramUserId}`).then((r) => {
-          setActiveUser({ user_id: r.data.id, first_name: r.data.first_name, last_name: r.data.last_name, avatar_url: r.data.avatar_url });
-        }).catch(() => {});
+        API.get(`/users/profile/${paramUserId}`)
+          .then((r) => {
+            setActiveUser({
+              user_id: r.data.id,
+              first_name: r.data.first_name,
+              last_name: r.data.last_name,
+              avatar_url: r.data.avatar_url,
+            });
+          })
+          .catch(() => {});
       }
       loadMessages(paramUserId);
     }
@@ -107,9 +117,20 @@ function ChatPage() {
     setConversations((prev) => {
       const existing = prev.find((c) => c.user_id === activeUser.user_id);
       if (existing) {
-        return prev.map((c) => c.user_id === activeUser.user_id ? { ...c, last_message: text, last_message_time: new Date().toISOString() } : c);
+        return prev.map((c) =>
+          c.user_id === activeUser.user_id
+            ? { ...c, last_message: text, last_message_time: new Date().toISOString() }
+            : c
+        );
       }
-      return [{ user_id: activeUser.user_id, first_name: activeUser.first_name, last_name: activeUser.last_name, last_message: text, last_message_time: new Date().toISOString(), unread_count: 0 }, ...prev];
+      return [{
+        user_id: activeUser.user_id,
+        first_name: activeUser.first_name,
+        last_name: activeUser.last_name,
+        last_message: text,
+        last_message_time: new Date().toISOString(),
+        unread_count: 0,
+      }, ...prev];
     });
   };
 
