@@ -18,12 +18,6 @@ function AIChatbot({ isEmbedded = false, onClose, initialMessage }) {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // ============================================
-  // NOTE: the "only parents can use this" check lives in AIChatbotGate.
-  //       Do NOT add an early return here — it would break the Rules of
-  //       Hooks if the user's role ever changed mid-session.
-  // ============================================
-
   const quickSuggestions = [
     { icon: '📅', label: 'Book a babysitter', text: 'I want to book a babysitter for this weekend' },
     { icon: '📝', label: 'Report an issue', text: 'I need to report an issue with my booking' },
@@ -63,11 +57,9 @@ function AIChatbot({ isEmbedded = false, onClose, initialMessage }) {
       }));
 
       if (history.length === 0 || history.every(m => m.sender === 'user')) {
-        // Welcome message
-        setMessages([
-          {
-            id: 'welcome',
-            text: `👋 Hi ${user?.first_name || 'there'}! I'm your AI assistant. I can help you with:
+        setMessages([{
+          id: 'welcome',
+          text: `👋 Hi ${user?.first_name || 'there'}! I'm your AI assistant. I can help you with:
 • 📅 Booking appointments
 • 📝 Reporting issues
 • 💰 Refund requests
@@ -76,26 +68,22 @@ function AIChatbot({ isEmbedded = false, onClose, initialMessage }) {
 • 📍 Finding babysitters near you
 
 How can I help you today?`,
-            sender: 'ai',
-            timestamp: new Date(),
-          }
-        ]);
+          sender: 'ai',
+          timestamp: new Date(),
+        }]);
       } else {
         setMessages(history.reverse());
       }
 
-      // Show suggestions after welcome
       setTimeout(() => setSuggestions(quickSuggestions), 500);
     } catch (error) {
       console.error('Load chat history error:', error);
-      setMessages([
-        {
-          id: 'welcome',
-          text: `👋 Hi ${user?.first_name || 'there'}! I'm your AI assistant. How can I help you today?`,
-          sender: 'ai',
-          timestamp: new Date(),
-        }
-      ]);
+      setMessages([{
+        id: 'welcome',
+        text: `👋 Hi ${user?.first_name || 'there'}! I'm your AI assistant. How can I help you today?`,
+        sender: 'ai',
+        timestamp: new Date(),
+      }]);
       setTimeout(() => setSuggestions(quickSuggestions), 500);
     }
   };
@@ -125,7 +113,6 @@ How can I help you today?`,
         sessionData,
       });
 
-      // Simulate typing delay for natural feel
       await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
 
       const aiMessage = {
@@ -169,20 +156,31 @@ How can I help you today?`,
     }
   };
 
+  // ============================================================
+  // ✅ FIX: Always clear the pending action + session, whether the
+  //         action succeeds or fails. Previously only success cleared
+  //         the session, so a failed action left actionRequired set
+  //         and the next message re-rendered a stale "Proceed" button
+  //         — clicking it could fire a duplicate booking / refund /
+  //         report.
+  //
+  //         Also pass the current sessionData to the server so it
+  //         doesn't have to remember it across requests.
+  // ============================================================
   const handleQuickAction = async (action, data) => {
     setLoading(true);
     try {
-      const res = await API.post('/ai/action', { action, data });
+      // Send the current session data so the server has full context.
+      const res = await API.post('/ai/action', { action, data: { ...data, ...sessionData } });
       if (res.data.success) {
         const successMsg = {
           id: Date.now(),
-          text: `✅ Action completed successfully! Reference ID: ${res.data.result.id || 'N/A'}`,
+          text: `✅ Action completed successfully! Reference ID: ${res.data.result?.id || 'N/A'}`,
           sender: 'ai',
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, successMsg]);
         setSuggestions(quickSuggestions);
-        setSessionData({});
         addToast('Action completed successfully!', 'success');
       }
     } catch (error) {
@@ -195,6 +193,9 @@ How can I help you today?`,
       }]);
       addToast('Failed to complete action', 'error');
     } finally {
+      // Whether it succeeded or failed, clear the pending session so
+      // the next message can't accidentally re-trigger the same action.
+      setSessionData({});
       setLoading(false);
     }
   };
@@ -286,7 +287,6 @@ How can I help you today?`,
         flexDirection: 'column',
         border: '1px solid var(--border-color, #e2e8f0)',
         overflow: 'hidden',
-        margin: isEmbedded ? '0' : '0',
         animation: isEmbedded ? 'none' : 'slideUpChat 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         position: isEmbedded ? 'relative' : 'fixed',
         bottom: isEmbedded ? 'auto' : '100px',
@@ -646,7 +646,7 @@ How can I help you today?`,
           line-height: 1;
           color: var(--text-secondary, #64748b);
         }
-        
+
         @keyframes typing-bounce {
           0%, 60%, 100% { transform: translateY(0); }
           30% { transform: translateY(-4px); }
@@ -658,60 +658,47 @@ How can I help you today?`,
         }
 
         @keyframes slideUpChat {
-          from { 
-            opacity: 0; 
+          from {
+            opacity: 0;
             transform: translateY(20px) scale(0.95);
           }
-          to { 
-            opacity: 1; 
+          to {
+            opacity: 1;
             transform: translateY(0) scale(1);
           }
         }
 
         @keyframes messageSlide {
-          from { 
-            opacity: 0; 
+          from {
+            opacity: 0;
             transform: translateY(10px) scale(0.98);
           }
-          to { 
-            opacity: 1; 
+          to {
+            opacity: 1;
             transform: translateY(0) scale(1);
           }
         }
 
-        /* Scrollbar styling for chat */
         .ai-chat-window ::-webkit-scrollbar {
           width: 4px;
         }
-        
+
         .ai-chat-window ::-webkit-scrollbar-track {
           background: transparent;
         }
-        
+
         .ai-chat-window ::-webkit-scrollbar-thumb {
           background: var(--border-color, #e2e8f0);
           border-radius: 2px;
         }
-        
+
         .ai-chat-window ::-webkit-scrollbar-thumb:hover {
           background: var(--text-muted, #94a3b8);
         }
 
-        /* Dark mode adjustments */
         [data-theme="dark"] .ai-chat-window {
           background: var(--bg-card, #1a1a2e);
           border-color: var(--border-color, #2a2a4a);
-        }
-
-        [data-theme="dark"] .ai-chat-window .message-ai {
-          background: var(--bg-card, #1a1a2e);
-          border-color: var(--border-color, #2a2a4a);
-          color: var(--text-primary, #e2e8f0);
-        }
-
-        [data-theme="dark"] .ai-chat-window .message-user {
-          background: linear-gradient(135deg, #6366f1, #7c3aed);
-          color: white;
         }
       `}</style>
     </div>
