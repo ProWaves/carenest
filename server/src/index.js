@@ -1,3 +1,4 @@
+// server/src/index.js
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -87,76 +88,6 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// RUN MIGRATIONS
-// ============================================
-const { exec } = require('child_process');
-const fs = require('fs');
-
-function runMigrations() {
-  console.log('Running database migrations...');
-
-  const initPath = './src/models/init.js';
-  if (fs.existsSync(initPath)) {
-    console.log('Running init.js...');
-    exec(`node ${initPath}`, (error, stdout, stderr) => {
-      if (error) {
-        console.log('init.js error:', error.message);
-      } else {
-        if (stdout) console.log(stdout);
-        if (stderr) console.error(stderr);
-        console.log('init.js completed');
-      }
-    });
-  }
-
-  const migrationFiles = [
-    './src/db/migrations/003_add_review_and_admin_features.js',
-    './src/db/migrations/004_add_user_locations.js',
-    './src/db/migrations/005_enhance_reports_table.js',
-    './src/db/migrations/007_add_availability_publishing.js',
-    './src/db/migrations/008_add_availability_booking_integration.js',
-    './src/db/migrations/010_add_job_posts_table.js',
-    './src/db/migrations/011_add_location_tracking.js',
-    './src/db/migrations/012_add_refunds_table.js',
-    './src/db/migrations/013_fix_reports_columns.js',
-    './src/db/migrations/014_add_missing_columns.js',
-    './src/db/migrations/015_add_missing_columns_v2.js',
-    './src/db/migrations/016_add_cancellation_reason.js',
-  ];
-
-  for (const file of migrationFiles) {
-    if (fs.existsSync(file)) {
-      console.log(`Running migration: ${file}`);
-      exec(`node ${file}`, (error, stdout, stderr) => {
-        if (error) {
-          console.log(`Migration error: ${error.message}`);
-        } else {
-          if (stdout) console.log(stdout);
-          if (stderr) console.error(stderr);
-          console.log(`Migration completed: ${file}`);
-        }
-      });
-    } else {
-      console.log(`Migration file not found: ${file}`);
-    }
-  }
-
-  const seedPath = './src/models/seed.js';
-  if (fs.existsSync(seedPath)) {
-    console.log('Running seed.js...');
-    exec(`node ${seedPath}`, (error, stdout, stderr) => {
-      if (error) {
-        console.log('seed.js error:', error.message);
-      } else {
-        if (stdout) console.log(stdout);
-        if (stderr) console.error(stderr);
-        console.log('seed.js completed');
-      }
-    });
-  }
-}
-
-// ============================================
 // ROUTES
 // ============================================
 const authRoutes = require('./routes/auth');
@@ -172,7 +103,7 @@ const reportRoutes = require('./routes/reports');
 const aiRoutes = require('./routes/aiChatbot');
 const jobRoutes = require('./routes/jobs');
 const adminChatbotRoutes = require('./routes/adminChatbot');
-const paymentRoutes = require('./routes/payments');   // 👈 ADDED
+const paymentRoutes = require('./routes/payments');
 const { setupChatSocket } = require('./sockets/chat');
 const { setIo: setNotificationIo } = require('./routes/notifications');
 const db = require('./config/database');
@@ -202,7 +133,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/admin/chatbot', adminChatbotRoutes);
-app.use('/api/payments', paymentRoutes);   // 👈 ADDED
+app.use('/api/payments', paymentRoutes);
 
 // ============================================
 // PUBLIC ENDPOINTS
@@ -246,6 +177,10 @@ app.get('/', (req, res) => {
 
 // ============================================
 // TEMPORARY: Initialize Database via HTTP
+// ============================================
+// ⚠️  Use only for one-off admin operations during development.
+//     This runs init + seed and returns raw stdout.
+//     It is NOT a replacement for `npm run db:setup`.
 // ============================================
 app.get('/api/init-db', async (req, res) => {
   try {
@@ -318,8 +253,27 @@ setNotificationIo(io);
 // ============================================
 // START SERVER
 // ============================================
-//runMigrations();
-
+// ⚠️  Migrations are NOT run here.
+//
+// They run as an explicit step so that:
+//   • Multi-instance deploys don't race the same CREATE/ALTER statements.
+//   • The web service fails fast if a migration is broken.
+//   • Cold starts stay fast.
+//
+// ── How to run migrations ─────────────────────────────────
+//
+//   Local dev:   npm run db:setup
+//
+//   Render prod: set the service's "Release Command" to
+//                npm run db:setup
+//                (Render runs it once per deploy, before the web
+//                service starts.)
+//
+//   Manual:      npm run db:init
+//                npm run db:migrate
+//                npm run db:seed
+//
+// ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0';
 
