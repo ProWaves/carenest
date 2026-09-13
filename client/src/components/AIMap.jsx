@@ -4,12 +4,10 @@ import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from './Toast';
 
-// Google Maps API Key - you'll need to add this to your .env file
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
-// Default to Beirut, Lebanon instead of Tunis
 const DEFAULT_LOCATION = {
-  lat: 33.8938,  // Beirut, Lebanon
+  lat: 33.8938,
   lng: 35.5018,
 };
 
@@ -23,6 +21,7 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
   const circleRef = useRef(null);
   const infoWindowRef = useRef(null);
   const isMountedRef = useRef(true);
+  const babysittersRef = useRef([]);
 
   const [babysitters, setBabysitters] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +39,12 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
   const [watchId, setWatchId] = useState(null);
   const [locationAttempts, setLocationAttempts] = useState(0);
 
-  // Track mount state so async callbacks don't touch refs after unmount.
+  // Keep a ref mirror of babysitters so delegated click handler can
+  // read the latest list without re-binding.
+  useEffect(() => {
+    babysittersRef.current = babysitters;
+  }, [babysitters]);
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
@@ -96,11 +100,9 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Get user location with better error handling
   const getUserLocation = useCallback(() => {
     return new Promise((resolve) => {
       if (!navigator.geolocation) {
-        console.warn('Geolocation not supported');
         resolve({
           lat: DEFAULT_LOCATION.lat,
           lng: DEFAULT_LOCATION.lng,
@@ -158,8 +160,6 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
 
     const setupLocation = async () => {
       try {
-        // navigator.permissions is not available on Safari < 16.4
-        // and throws on some Firefox configurations. Guard it.
         if (navigator.permissions && typeof navigator.permissions.query === 'function') {
           try {
             const permission = await navigator.permissions.query({ name: 'geolocation' });
@@ -182,13 +182,9 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
             }
           } catch (permError) {
             console.warn('permissions.query failed:', permError);
-            // Fall through to the getCurrentPosition path below
           }
         }
 
-        // Either permission was 'prompt', or the Permissions API isn't
-        // available. Try getCurrentPosition directly — that triggers the
-        // browser prompt.
         const position = await getUserLocation();
         if (!isMountedRef.current) return;
         if (position && !position.error) {
@@ -207,7 +203,6 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role]);
 
-  // Start location tracking for parents
   const startLocationTracking = () => {
     if (!navigator.geolocation) return;
 
@@ -242,7 +237,6 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
     setWatchId(id);
   };
 
-  // Fetch nearby babysitters
   const fetchNearbyBabysitters = useCallback(async (centerLat, centerLng, r) => {
     if (!isMountedRef.current) return;
     setLoading(true);
@@ -298,13 +292,7 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
   // Initialize map ONCE
   useEffect(() => {
     if (!mapLoaded || !window.google || !mapRef.current) return;
-
-    // ✅ Guard against the container being detached (e.g. parent unmounted
-    //    before the map initialized). Google Maps throws "Expected mapDiv
-    //    of type HTMLElement" when given a detached node.
     if (!mapRef.current.isConnected) return;
-
-    // ✅ Guard against re-initializing on an already-created map
     if (mapInstanceRef.current) return;
 
     try {
@@ -324,7 +312,6 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
 
       infoWindowRef.current = new window.google.maps.InfoWindow({ maxWidth: 320 });
 
-      // User marker
       userMarkerRef.current = new window.google.maps.Marker({
         position: userLocation,
         map,
@@ -341,7 +328,6 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
         animation: window.google.maps.Animation.DROP,
       });
 
-      // Radius circle
       const circle = new window.google.maps.Circle({
         map,
         radius: radius * 1000,
@@ -388,6 +374,36 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
     if (!circleRef.current) return;
     circleRef.current.setRadius(radius * 1000);
   }, [radius]);
+
+  // ============================================================
+  // ✅ Delegated click handler on the map container.
+  //
+  // InfoWindow content is raw HTML, so we can't attach React
+  // handlers directly. Instead, buttons rendered in the InfoWindow
+  // carry a data-babysitter-id attribute, and this single listener
+  // catches clicks on them without needing a window global.
+  // ============================================================
+  useEffect(() => {
+    const container = mapRef.current;
+    if (!container) return;
+
+    const handleClick = (e) => {
+      const btn = e.target.closest('[data-babysitter-id]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const id = parseInt(btn.getAttribute('data-babysitter-id'));
+      const bs = babysittersRef.current.find(b => b.id === id);
+      if (bs && onSelectBabysitter) {
+        if (infoWindowRef.current) infoWindowRef.current.close();
+        onSelectBabysitter(bs);
+      }
+    };
+
+    container.addEventListener('click', handleClick);
+    return () => container.removeEventListener('click', handleClick);
+  }, [onSelectBabysitter]);
 
   // Update map markers
   const updateMapMarkers = useCallback((babysittersData) => {
@@ -442,6 +458,7 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
         const statusText = isFresh ? '🟢 Online now' : isStale ? `🟡 Last seen ${bs.location_updated_minutes_ago} min ago` : '📍 Location unknown';
         const distanceDisplay = bs.distance_km ? `${bs.distance_km} km away` : 'Distance unknown';
 
+        // ✅ Use data-babysitter-id instead of onclick="window.selectBabysitter(...)"
         const content = `
           <div style="padding: 8px 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-width: 200px;">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
@@ -460,7 +477,7 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
               ${bs.is_verified ? '<span style="background: #d1fae5; padding: 2px 10px; border-radius: 12px; font-size: 12px; color: #065f46;">✅ Verified</span>' : ''}
               ${bs.experience_years > 0 ? `<span style="background: #e0e7ff; padding: 2px 10px; border-radius: 12px; font-size: 12px; color: #4f46e5;">${bs.experience_years} yrs</span>` : ''}
             </div>
-            <button onclick="window.selectBabysitter('${bs.id}')" style="width: 100%; padding: 8px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: transform 0.2s; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);">
+            <button data-babysitter-id="${bs.id}" style="width: 100%; padding: 8px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: transform 0.2s; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);">
               📅 View Profile
             </button>
           </div>
@@ -481,19 +498,6 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
     }
   }, []);
 
-  // Handle babysitter selection
-  useEffect(() => {
-    window.selectBabysitter = (id) => {
-      const bs = babysitters.find(b => b.id === parseInt(id));
-      if (bs && onSelectBabysitter) {
-        if (infoWindowRef.current) infoWindowRef.current.close();
-        onSelectBabysitter(bs);
-      }
-    };
-    return () => { delete window.selectBabysitter; };
-  }, [babysitters, onSelectBabysitter]);
-
-  // Center map on user location
   const centerOnUser = () => {
     if (mapInstanceRef.current && userLocation) {
       mapInstanceRef.current.panTo(userLocation);
@@ -502,22 +506,17 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
     }
   };
 
-  // Refresh nearby babysitters
   const refreshBabysitters = () => {
     fetchNearbyBabysitters(userLocation.lat, userLocation.lng, radius);
     addToast('🔄 Refreshing nearby babysitters...', 'info');
   };
 
-  // Handle radius change
   const handleRadiusChange = (e) => {
     const newRadius = parseInt(e.target.value);
     setRadius(newRadius);
-    // The circle is updated by the radius effect.
-    // Refetch nearby babysitters with the new radius.
     fetchNearbyBabysitters(userLocation.lat, userLocation.lng, newRadius);
   };
 
-  // If Google Maps API key is not set
   if (!GOOGLE_MAPS_API_KEY) {
     return (
       <div style={{ width: '100%', height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', background: 'var(--bg-secondary)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>

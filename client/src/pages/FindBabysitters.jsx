@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useLanguage } from '../context/LanguageContext';
 import Rating from '../components/Rating';
 import { SkeletonList } from '../components/Skeleton';
 import BackButton from '../components/BackButton';
-import AIChatbot from './components/AIChatbotGate';
+import AIChatbot from '../components/AIChatbotGate';
 import AIMap from '../components/AIMap';
 
 function FindBabysitters() {
+  const navigate = useNavigate();
   const [data, setData] = useState({ babysitters: [], total: 0, page: 1, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ city: '', min_rate: '', max_rate: '', search: '', sort: 'default' });
@@ -19,8 +20,6 @@ function FindBabysitters() {
   const [showMap, setShowMap] = useState(false);
   const { t } = useLanguage();
 
-  // Tracks the current in-flight request so we can cancel it when the
-  // effect re-runs (e.g. user typed another letter, changed a filter).
   const abortRef = useRef(null);
 
   useEffect(() => {
@@ -28,10 +27,7 @@ function FindBabysitters() {
   }, []);
 
   const fetchBabysitters = useCallback(async (params = {}, pageNum = 1) => {
-    // Cancel any previous request
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
+    if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -41,22 +37,15 @@ function FindBabysitters() {
       Object.entries(params).forEach(([k, v]) => { if (v) query.append(k, v); });
       query.append('page', pageNum);
       query.append('limit', 12);
-
-      const res = await API.get(`/babysitters?${query.toString()}`, {
-        signal: controller.signal,
-      });
+      const res = await API.get(`/babysitters?${query.toString()}`, { signal: controller.signal });
       setData(res.data);
     } catch (err) {
-      // Ignore aborts — they're not errors
       if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
         return;
       }
       console.error(err);
     } finally {
-      // Only flip loading off if this is still the active request
-      if (abortRef.current === controller) {
-        setLoading(false);
-      }
+      if (abortRef.current === controller) setLoading(false);
     }
   }, []);
 
@@ -67,7 +56,6 @@ function FindBabysitters() {
     return () => clearTimeout(timeout);
   }, [filters, page, fetchBabysitters]);
 
-  // Cancel any in-flight request on unmount
   useEffect(() => {
     return () => {
       if (abortRef.current) abortRef.current.abort();
@@ -84,7 +72,6 @@ function FindBabysitters() {
     <div className="find-page">
       <BackButton label="← Back to Home" fallback="/" />
 
-      {/* Gradient Hero */}
       <div style={{ background: 'linear-gradient(135deg, #4F46E5, #7C3AED, #6366F1)', borderRadius: 'var(--radius-lg)', padding: '28px 32px', marginBottom: '24px', color: '#fff', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
         <div style={{ position: 'absolute', bottom: -40, right: 60, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
@@ -106,7 +93,6 @@ function FindBabysitters() {
         </div>
       </div>
 
-      {/* AI Chat Panel */}
       {showAIChat && (
         <div style={{
           marginBottom: '20px',
@@ -142,12 +128,12 @@ function FindBabysitters() {
         </div>
       )}
 
-      {/* Map View */}
+      {/* ✅ Map View — navigate via React Router, not window.location.href */}
       {showMap && (
         <div style={{ marginBottom: '24px' }}>
           <AIMap
             onSelectBabysitter={(bs) => {
-              window.location.href = `/babysitters/${bs.id}`;
+              navigate(`/babysitters/${bs.id}`);
             }}
           />
         </div>
