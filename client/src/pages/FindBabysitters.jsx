@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import API from '../api/axios';
 import { useLanguage } from '../context/LanguageContext';
@@ -19,32 +19,60 @@ function FindBabysitters() {
   const [showMap, setShowMap] = useState(false);
   const { t } = useLanguage();
 
+  // Tracks the current in-flight request so we can cancel it when the
+  // effect re-runs (e.g. user typed another letter, changed a filter).
+  const abortRef = useRef(null);
+
   useEffect(() => {
     API.get('/cities').then((r) => setCities(r.data)).catch(() => {});
   }, []);
 
-  const fetchBabysitters = async (params = {}, pageNum = 1) => {
+  const fetchBabysitters = useCallback(async (params = {}, pageNum = 1) => {
+    // Cancel any previous request
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     try {
       const query = new URLSearchParams();
       Object.entries(params).forEach(([k, v]) => { if (v) query.append(k, v); });
       query.append('page', pageNum);
       query.append('limit', 12);
-      const res = await API.get(`/babysitters?${query.toString()}`);
+
+      const res = await API.get(`/babysitters?${query.toString()}`, {
+        signal: controller.signal,
+      });
       setData(res.data);
     } catch (err) {
+      // Ignore aborts — they're not errors
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+        return;
+      }
       console.error(err);
     } finally {
-      setLoading(false);
+      // Only flip loading off if this is still the active request
+      if (abortRef.current === controller) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
       fetchBabysitters(filters, page);
     }, 300);
     return () => clearTimeout(timeout);
-  }, [filters, page]);
+  }, [filters, page, fetchBabysitters]);
+
+  // Cancel any in-flight request on unmount
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
 
   const handleFilter = (e) => {
     const { name, value } = e.target;
@@ -106,8 +134,8 @@ function FindBabysitters() {
               ✕
             </button>
           </div>
-          <AIChatbot 
-            isEmbedded={true} 
+          <AIChatbot
+            isEmbedded={true}
             onClose={() => setShowAIChat(false)}
             initialMessage="Help me find a babysitter. I need someone reliable and experienced."
           />
@@ -117,7 +145,7 @@ function FindBabysitters() {
       {/* Map View */}
       {showMap && (
         <div style={{ marginBottom: '24px' }}>
-          <AIMap 
+          <AIMap
             onSelectBabysitter={(bs) => {
               window.location.href = `/babysitters/${bs.id}`;
             }}
