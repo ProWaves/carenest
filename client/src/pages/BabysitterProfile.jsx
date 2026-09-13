@@ -22,14 +22,19 @@ function BabysitterProfile() {
   const [showAIChat, setShowAIChat] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
 
+  // Load profile + favorite status.
+  // NOTE: we intentionally do NOT depend on `addToast` (stable from
+  // ToastProvider via useCallback) or on the whole `user` object (its
+  // identity changes on every AuthProvider render). We only care about
+  // the user's id for the favorite lookup.
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         setLoading(true);
         const res = await API.get(`/babysitters/${id}`);
         setProfile(res.data);
-        
-        if (user) {
+
+        if (user?.id) {
           try {
             const favRes = await API.get('/parent/favorites');
             setIsFav(favRes.data.some(f => f.id === parseInt(id)));
@@ -45,7 +50,8 @@ function BabysitterProfile() {
       }
     };
     fetchProfile();
-  }, [id, user, addToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user?.id]);
 
   useEffect(() => {
     if (profile?.id) {
@@ -73,12 +79,12 @@ function BabysitterProfile() {
   };
 
   const dayNames = [
-    t('babysitter.sunday'), 
-    t('babysitter.monday'), 
-    t('babysitter.tuesday'), 
-    t('babysitter.wednesday'), 
-    t('babysitter.thursday'), 
-    t('babysitter.friday'), 
+    t('babysitter.sunday'),
+    t('babysitter.monday'),
+    t('babysitter.tuesday'),
+    t('babysitter.wednesday'),
+    t('babysitter.thursday'),
+    t('babysitter.friday'),
     t('babysitter.saturday')
   ];
 
@@ -90,7 +96,7 @@ function BabysitterProfile() {
       </div>
     );
   }
-  
+
   if (!profile) {
     return (
       <div className="no-results">
@@ -133,7 +139,6 @@ function BabysitterProfile() {
             color: 'white',
             overflow: 'hidden',
           }}>
-            {/* decorative circles */}
             <div style={{
               position: 'absolute', top: -50, right: -50,
               width: 160, height: 160, borderRadius: '50%',
