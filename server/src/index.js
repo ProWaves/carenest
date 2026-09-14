@@ -123,7 +123,7 @@ app.use('/api/payments', paymentRoutes);
 
 // ✅ NEW: admin AI lives at /api/admin/chatbot/chat (unchanged URL for frontend)
 app.use('/api/admin/chatbot', adminAiRoutes);
-app.use('/api/ai/chat', aiChatRoutes);
+app.use('/api/ai', aiChatRoutes);
 
 // ============================================
 // PUBLIC ENDPOINTS
