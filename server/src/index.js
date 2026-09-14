@@ -14,7 +14,6 @@ const server = http.createServer(app);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // List of allowed origins (exact matches + wildcard patterns)
   const allowedOrigins = [
     'https://sitterspot-backend.onrender.com',
     'https://carenest-rzmg-seven.vercel.app',
@@ -31,14 +30,11 @@ app.use((req, res, next) => {
     'exp://10.144.149.5:8081',
   ];
 
-  // Decide whether this origin is allowed
   let allowedOrigin = null;
 
   if (origin) {
-    // Exact / wildcard match against the allowed list
     const isAllowed = allowedOrigins.some((allowed) => {
       if (allowed.includes('*')) {
-        // Escape regex special chars, then convert * -> .*
         const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
         const pattern = escaped.replace(/\*/g, '.*');
         return new RegExp(`^${pattern}$`).test(origin);
@@ -46,10 +42,7 @@ app.use((req, res, next) => {
       return allowed === origin;
     });
 
-    // Allow any *.vercel.app preview deployment
     const isVercel = /\.vercel\.app$/.test(origin);
-
-    // Allow Android emulator / local dev hosts (10.x, 192.168.x, localhost)
     const isLocalDev = /^https?:\/\/(localhost|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin);
 
     if (isAllowed || isVercel || isLocalDev) {
@@ -57,11 +50,6 @@ app.use((req, res, next) => {
     }
   }
 
-  // IMPORTANT:
-  // If the origin is NOT allowed we must NOT send `*`.
-  // With `Access-Control-Allow-Credentials: true`, a `*` origin is rejected
-  // by every browser, so the response would fail even for valid callers.
-  // Leaving the header off lets the browser block disallowed origins naturally.
   if (allowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -77,10 +65,7 @@ app.use((req, res, next) => {
 
   console.log('🔥 CORS:', req.method, req.url, 'from', origin, '->', allowedOrigin || 'BLOCKED');
 
-  // Handle preflight OPTIONS requests
   if (req.method === 'OPTIONS') {
-    // Return 204 regardless. If the origin was disallowed, no CORS headers
-    // were set above, so the browser will still reject the preflight.
     return res.sendStatus(204);
   }
 
@@ -100,14 +85,15 @@ const adminRoutes = require('./routes/admin');
 const parentRoutes = require('./routes/parent');
 const notificationRoutes = require('./routes/notifications');
 const reportRoutes = require('./routes/reports');
-const aiRoutes = require('./routes/aiChatbot');
 const jobRoutes = require('./routes/jobs');
-const adminChatbotRoutes = require('./routes/adminChatbot');
 const paymentRoutes = require('./routes/payments');
+
+// ✅ NEW: modular AI admin assistant (replaces old adminChatbot + aiChatbot)
+const adminAiRoutes = require('./ai/admin');
+
 const { setupChatSocket } = require('./sockets/chat');
 const { setIo: setNotificationIo } = require('./routes/notifications');
 const db = require('./config/database');
-const aiChatRoutes = require('./routes/aiChat');
 
 // ============================================
 // MIDDLEWARE
@@ -131,18 +117,18 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
-
 app.use('/api/jobs', jobRoutes);
-app.use('/api/admin/chatbot', adminChatbotRoutes);
-app.use('/api/ai/chat', aiChatRoutes);
 app.use('/api/payments', paymentRoutes);
+
+// ✅ NEW: admin AI lives at /api/admin/chatbot/chat (unchanged URL for frontend)
+app.use('/api/admin/chatbot', adminAiRoutes);
 
 // ============================================
 // PUBLIC ENDPOINTS
 // ============================================
 app.get('/api/cities', async (req, res) => {
   try {
-    const result = await db.query('SELECT DISTINCT city FROM users WHERE city IS NOT NULL AND city != \'\' ORDER BY city');
+    const result = await db.query("SELECT DISTINCT city FROM users WHERE city IS NOT NULL AND city != '' ORDER BY city");
     res.json(result.rows.map(r => r.city));
   } catch (error) {
     console.error('Cities error:', error);
@@ -180,10 +166,6 @@ app.get('/', (req, res) => {
 // ============================================
 // TEMPORARY: Initialize Database via HTTP
 // ============================================
-// ⚠️  Use only for one-off admin operations during development.
-//     This runs init + seed and returns raw stdout.
-//     It is NOT a replacement for `npm run db:setup`.
-// ============================================
 app.get('/api/init-db', async (req, res) => {
   try {
     const { exec } = require('child_process');
@@ -216,20 +198,16 @@ app.use((req, res) => {
 const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps)
       if (!origin) return callback(null, true);
 
-      // Allow all vercel.app domains
       if (/\.vercel\.app$/.test(origin)) {
         return callback(null, true);
       }
 
-      // Allow localhost / local network for development
       if (/^https?:\/\/(localhost|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)) {
         return callback(null, true);
       }
 
-      // Allow specific domains
       const allowedOrigins = [
         'https://sitterspot-backend.onrender.com',
         'https://carenest.vercel.app',
@@ -255,27 +233,6 @@ setNotificationIo(io);
 // ============================================
 // START SERVER
 // ============================================
-// ⚠️  Migrations are NOT run here.
-//
-// They run as an explicit step so that:
-//   • Multi-instance deploys don't race the same CREATE/ALTER statements.
-//   • The web service fails fast if a migration is broken.
-//   • Cold starts stay fast.
-//
-// ── How to run migrations ─────────────────────────────────
-//
-//   Local dev:   npm run db:setup
-//
-//   Render prod: set the service's "Release Command" to
-//                npm run db:setup
-//                (Render runs it once per deploy, before the web
-//                service starts.)
-//
-//   Manual:      npm run db:init
-//                npm run db:migrate
-//                npm run db:seed
-//
-// ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0';
 
