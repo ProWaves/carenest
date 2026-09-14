@@ -88,9 +88,9 @@ const reportRoutes = require('./routes/reports');
 const jobRoutes = require('./routes/jobs');
 const paymentRoutes = require('./routes/payments');
 
-// ✅ NEW: modular AI admin assistant (replaces old adminChatbot + aiChatbot)
-const adminAiRoutes = require('./ai/admin');
-const aiChatRoutes = require('./routes/aiChat');
+// AI modules
+const adminAiRoutes = require('./ai/admin');       // admin AI
+const aiChatRoutes = require('./ai/parent');       // parent/babysitter AI
 
 const { setupChatSocket } = require('./sockets/chat');
 const { setIo: setNotificationIo } = require('./routes/notifications');
@@ -102,7 +102,6 @@ const db = require('./config/database');
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ============================================
@@ -121,7 +120,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/payments', paymentRoutes);
 
-// ✅ NEW: admin AI lives at /api/admin/chatbot/chat (unchanged URL for frontend)
+// AI routes
 app.use('/api/admin/chatbot', adminAiRoutes);
 app.use('/api/ai', aiChatRoutes);
 
@@ -165,9 +164,6 @@ app.get('/', (req, res) => {
   });
 });
 
-// ============================================
-// TEMPORARY: Initialize Database via HTTP
-// ============================================
 app.get('/api/init-db', async (req, res) => {
   try {
     const { exec } = require('child_process');
@@ -201,15 +197,10 @@ const io = new Server(server, {
   cors: {
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-
-      if (/\.vercel\.app$/.test(origin)) {
-        return callback(null, true);
-      }
-
+      if (/\.vercel\.app$/.test(origin)) return callback(null, true);
       if (/^https?:\/\/(localhost|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)) {
         return callback(null, true);
       }
-
       const allowedOrigins = [
         'https://sitterspot-backend.onrender.com',
         'https://carenest.vercel.app',
@@ -217,11 +208,7 @@ const io = new Server(server, {
         'https://carenest-red.vercel.app',
         'https://carenest-rzmg.vercel.app',
       ];
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
+      if (allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
