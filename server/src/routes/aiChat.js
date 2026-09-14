@@ -36,7 +36,7 @@ Be friendly, concise, and helpful. If the user is a babysitter, focus on jobs an
         ...trimmed,
         { role: 'user', content: message }
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-20b',
       temperature: 0.7,
       max_completion_tokens: 1024,
     });
