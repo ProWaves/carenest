@@ -90,6 +90,7 @@ const paymentRoutes = require('./routes/payments');
 
 // ✅ NEW: modular AI admin assistant (replaces old adminChatbot + aiChatbot)
 const adminAiRoutes = require('./ai/admin');
+const aiChatRoutes = require('./routes/aiChat');
 
 const { setupChatSocket } = require('./sockets/chat');
 const { setIo: setNotificationIo } = require('./routes/notifications');
@@ -122,6 +123,7 @@ app.use('/api/payments', paymentRoutes);
 
 // ✅ NEW: admin AI lives at /api/admin/chatbot/chat (unchanged URL for frontend)
 app.use('/api/admin/chatbot', adminAiRoutes);
+app.use('/api/ai/chat', aiChatRoutes);
 
 // ============================================
 // PUBLIC ENDPOINTS
