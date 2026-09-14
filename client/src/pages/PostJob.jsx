@@ -9,6 +9,7 @@ function PostJob() {
   const navigate = useNavigate();
   const { addToast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');   // ✅ NEW
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -31,7 +32,10 @@ function PostJob() {
     setLoading(true);
 
     try {
-      await API.post('/jobs', form);
+      await API.post('/jobs', {
+        ...form,
+        turnstileToken,   // ✅ NEW
+      });
       addToast('Job posted successfully! 🎉', 'success');
       navigate('/dashboard?tab=jobs');
     } catch (error) {
@@ -179,6 +183,16 @@ function PostJob() {
               />
             </div>
           </div>
+
+          {/* ✅ Turnstile CAPTCHA */}
+          <div
+            className="cf-turnstile"
+            data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
+            data-callback={(token) => setTurnstileToken(token)}
+            data-theme="light"
+            data-size="normal"
+            style={{ marginBottom: 16, display: 'flex', justifyContent: 'center' }}
+          />
 
           <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={loading}>
             {loading ? (

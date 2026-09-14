@@ -15,6 +15,7 @@ function Register() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');   // ✅ NEW
   const { register } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -28,7 +29,10 @@ function Register() {
     setError('');
     setLoading(true);
     try {
-      await register(form);
+      await register({
+        ...form,
+        turnstileToken,   // ✅ NEW
+      });
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || t('common.error'));
@@ -135,6 +139,16 @@ function Register() {
                   </select>
                 </div>
               </div>
+
+              {/* ✅ Turnstile CAPTCHA */}
+              <div
+                className="cf-turnstile"
+                data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
+                data-callback={(token) => setTurnstileToken(token)}
+                data-theme="light"
+                data-size="normal"
+                style={{ marginBottom: 16, display: 'flex', justifyContent: 'center' }}
+              />
 
               <button type="submit" disabled={loading} style={{ width: '100%', padding: '13px', background: loading ? 'var(--color-primary-300)' : 'linear-gradient(135deg, #4F46E5, #6366F1)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', fontWeight: '700', fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(79,70,229,0.3)', transition: 'all 0.2s' }}>
                 {loading ? t('common.loading') : t('auth.register')}

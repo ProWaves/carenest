@@ -4,11 +4,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const verifyTurnstile = require('../middleware/turnstile');
 
 const router = express.Router();
 
 // POST /api/auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', verifyTurnstile, async (req, res) => {
   try {
     const { email, password, role, first_name, last_name, phone, city, language, gender } = req.body;
 

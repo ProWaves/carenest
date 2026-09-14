@@ -3,6 +3,7 @@ const express = require('express');
 const db = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
 const { createNotification } = require('../routes/notifications');
+const verifyTurnstile = require('../middleware/turnstile');
 
 const router = express.Router();
 
@@ -58,7 +59,7 @@ const checkBabysitterAvailability = async (babysitterId, startDate, endDate, sta
 // ============================================
 
 // POST /api/jobs - Create a job post
-router.post('/', authenticate, authorize('parent'), async (req, res) => {
+router.post('/', authenticate, authorize('parent'), verifyTurnstile, async (req, res) => {
     try {
         const {
             title, description, child_age, child_count,
