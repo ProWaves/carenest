@@ -1,5 +1,5 @@
 // client/src/pages/PostJob.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useToast } from '../components/Toast';
@@ -9,7 +9,12 @@ function PostJob() {
   const navigate = useNavigate();
   const { addToast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState('');   // ✅ NEW
+  const [turnstileToken, setTurnstileToken] = useState('');
+
+  // ✅ Turnstile refs for explicit rendering
+  const turnstileRef = useRef(null);
+  const widgetIdRef = useRef(null);
+
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -23,6 +28,44 @@ function PostJob() {
     location: '',
   });
 
+  // ✅ Explicitly render the Turnstile widget
+  useEffect(() => {
+    let cancelled = false;
+
+    const tryRender = () => {
+      if (cancelled) return;
+
+      if (window.turnstile && turnstileRef.current && !widgetIdRef.current) {
+        try {
+          widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
+            sitekey: import.meta.env.VITE_TURNSTILE_SITE_KEY,
+            callback: (token) => setTurnstileToken(token),
+            'error-callback': () => setTurnstileToken(''),
+            'expired-callback': () => setTurnstileToken(''),
+            theme: 'light',
+            size: 'normal',
+          });
+        } catch (e) {
+          console.warn('Turnstile render failed:', e);
+        }
+      } else if (!window.turnstile) {
+        setTimeout(tryRender, 100);
+      }
+    };
+
+    tryRender();
+
+    return () => {
+      cancelled = true;
+      try {
+        if (widgetIdRef.current && window.turnstile) {
+          window.turnstile.remove(widgetIdRef.current);
+        }
+      } catch {}
+      widgetIdRef.current = null;
+    };
+  }, []);
+
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
@@ -34,7 +77,7 @@ function PostJob() {
     try {
       await API.post('/jobs', {
         ...form,
-        turnstileToken,   // ✅ NEW
+        turnstileToken,
       });
       addToast('Job posted successfully! 🎉', 'success');
       navigate('/dashboard?tab=jobs');
@@ -65,133 +108,62 @@ function PostJob() {
         <form onSubmit={handleSubmit} className="post-job-form">
           <div className="form-group">
             <label>Job Title <span style={{ color: '#ef4444' }}>*</span></label>
-            <input
-              type="text"
-              name="title"
-              value={form.title}
-              onChange={handleChange}
-              placeholder="e.g., Need a babysitter for my 3-year-old"
-              required
-            />
+            <input type="text" name="title" value={form.title} onChange={handleChange} placeholder="e.g., Need a babysitter for my 3-year-old" required />
           </div>
 
           <div className="form-group">
             <label>Description</label>
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={handleChange}
-              placeholder="Describe your needs, expectations, and any special requirements..."
-              rows={4}
-            />
+            <textarea name="description" value={form.description} onChange={handleChange} placeholder="Describe your needs, expectations, and any special requirements..." rows={4} />
           </div>
 
           <div className="form-row">
             <div className="form-group">
               <label>Child's Age</label>
-              <input
-                type="text"
-                name="child_age"
-                value={form.child_age}
-                onChange={handleChange}
-                placeholder="e.g., 3 years, 6 months"
-              />
+              <input type="text" name="child_age" value={form.child_age} onChange={handleChange} placeholder="e.g., 3 years, 6 months" />
             </div>
             <div className="form-group">
               <label>Number of Children</label>
-              <input
-                type="number"
-                name="child_count"
-                value={form.child_count}
-                onChange={handleChange}
-                min="1"
-                max="10"
-              />
+              <input type="number" name="child_count" value={form.child_count} onChange={handleChange} min="1" max="10" />
             </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
               <label>Start Date <span style={{ color: '#ef4444' }}>*</span></label>
-              <input
-                type="date"
-                name="start_date"
-                value={form.start_date}
-                onChange={handleChange}
-                min={today}
-                required
-              />
+              <input type="date" name="start_date" value={form.start_date} onChange={handleChange} min={today} required />
             </div>
             <div className="form-group">
               <label>End Date <span style={{ color: '#ef4444' }}>*</span></label>
-              <input
-                type="date"
-                name="end_date"
-                value={form.end_date}
-                onChange={handleChange}
-                min={form.start_date || today}
-                required
-              />
+              <input type="date" name="end_date" value={form.end_date} onChange={handleChange} min={form.start_date || today} required />
             </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
               <label>Start Time <span style={{ color: '#ef4444' }}>*</span></label>
-              <input
-                type="time"
-                name="start_time"
-                value={form.start_time}
-                onChange={handleChange}
-                required
-              />
+              <input type="time" name="start_time" value={form.start_time} onChange={handleChange} required />
             </div>
             <div className="form-group">
               <label>End Time <span style={{ color: '#ef4444' }}>*</span></label>
-              <input
-                type="time"
-                name="end_time"
-                value={form.end_time}
-                onChange={handleChange}
-                required
-              />
+              <input type="time" name="end_time" value={form.end_time} onChange={handleChange} required />
             </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
               <label>Hourly Rate ($) <span style={{ color: '#ef4444' }}>*</span></label>
-              <input
-                type="number"
-                name="hourly_rate"
-                value={form.hourly_rate}
-                onChange={handleChange}
-                placeholder="15"
-                min="1"
-                step="0.50"
-                required
-              />
+              <input type="number" name="hourly_rate" value={form.hourly_rate} onChange={handleChange} placeholder="15" min="1" step="0.50" required />
             </div>
             <div className="form-group">
               <label>Location</label>
-              <input
-                type="text"
-                name="location"
-                value={form.location}
-                onChange={handleChange}
-                placeholder="City or area"
-              />
+              <input type="text" name="location" value={form.location} onChange={handleChange} placeholder="City or area" />
             </div>
           </div>
 
-          {/* ✅ Turnstile CAPTCHA */}
+          {/* ✅ Turnstile CAPTCHA — explicit render via ref */}
           <div
-            className="cf-turnstile"
-            data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
-            data-callback={(token) => setTurnstileToken(token)}
-            data-theme="light"
-            data-size="normal"
-            style={{ marginBottom: 16, display: 'flex', justifyContent: 'center' }}
+            ref={turnstileRef}
+            style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', minHeight: 65 }}
           />
 
           <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={loading}>

@@ -2,7 +2,7 @@
 // Register.jsx — User Registration Page
 // ==========================================================================
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -15,10 +15,54 @@ function Register() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState('');   // ✅ NEW
+  const [turnstileToken, setTurnstileToken] = useState('');
+
+  // ✅ Turnstile refs for explicit rendering
+  const turnstileRef = useRef(null);
+  const widgetIdRef = useRef(null);
+
   const { register } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
+
+  // ✅ Explicitly render the Turnstile widget once Cloudflare's script is loaded
+  useEffect(() => {
+    let cancelled = false;
+
+    const tryRender = () => {
+      if (cancelled) return;
+
+      if (window.turnstile && turnstileRef.current && !widgetIdRef.current) {
+        try {
+          widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
+            sitekey: import.meta.env.VITE_TURNSTILE_SITE_KEY,
+            callback: (token) => setTurnstileToken(token),
+            'error-callback': () => setTurnstileToken(''),
+            'expired-callback': () => setTurnstileToken(''),
+            theme: 'light',
+            size: 'normal',
+          });
+        } catch (e) {
+          console.warn('Turnstile render failed:', e);
+        }
+      } else if (!window.turnstile) {
+        // Script not loaded yet — retry shortly
+        setTimeout(tryRender, 100);
+      }
+    };
+
+    tryRender();
+
+    return () => {
+      cancelled = true;
+      try {
+        if (widgetIdRef.current && window.turnstile) {
+          window.turnstile.remove(widgetIdRef.current);
+        }
+      } catch {}
+      widgetIdRef.current = null;
+    };
+  }, []);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -31,7 +75,7 @@ function Register() {
     try {
       await register({
         ...form,
-        turnstileToken,   // ✅ NEW
+        turnstileToken,
       });
       navigate('/dashboard');
     } catch (err) {
@@ -74,8 +118,8 @@ function Register() {
                 <label style={labelStyle}>{t('auth.role')}</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   {[
-                    { value: 'parent', label: t('auth.parent'), icon: String.fromCodePoint(128105) + String.fromCodePoint(8205) + String.fromCodePoint(128118) },
-                    { value: 'babysitter', label: t('auth.babysitter'), icon: String.fromCodePoint(128105) + String.fromCodePoint(8205) + String.fromCodePoint(128118) },
+                    { value: 'parent', label: t('auth.parent') },
+                    { value: 'babysitter', label: t('auth.babysitter') },
                   ].map((r) => (
                     <button key={r.value} type="button" onClick={() => setForm({ ...form, role: r.value })} style={{ flex: 1, padding: '12px', borderRadius: 'var(--radius)', border: form.role === r.value ? '2px solid #4F46E5' : '1.5px solid var(--color-border)', background: form.role === r.value ? 'rgba(79,70,229,0.06)' : 'var(--color-surface)', color: form.role === r.value ? '#4F46E5' : 'var(--color-text-secondary)', fontWeight: '600', fontSize: '0.9rem', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'center' }}>
                       {r.label}
@@ -140,14 +184,10 @@ function Register() {
                 </div>
               </div>
 
-              {/* ✅ Turnstile CAPTCHA */}
+              {/* ✅ Turnstile CAPTCHA — explicit render via ref */}
               <div
-                className="cf-turnstile"
-                data-sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
-                data-callback={(token) => setTurnstileToken(token)}
-                data-theme="light"
-                data-size="normal"
-                style={{ marginBottom: 16, display: 'flex', justifyContent: 'center' }}
+                ref={turnstileRef}
+                style={{ marginBottom: 16, display: 'flex', justifyContent: 'center', minHeight: 65 }}
               />
 
               <button type="submit" disabled={loading} style={{ width: '100%', padding: '13px', background: loading ? 'var(--color-primary-300)' : 'linear-gradient(135deg, #4F46E5, #6366F1)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', fontWeight: '700', fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(79,70,229,0.3)', transition: 'all 0.2s' }}>
