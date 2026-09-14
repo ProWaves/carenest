@@ -110,7 +110,6 @@ How can I help you today?`,
     try {
       const res = await API.post('/ai/chat', {
         message: text,
-        sessionData,
       });
 
       await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));

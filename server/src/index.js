@@ -107,6 +107,7 @@ const paymentRoutes = require('./routes/payments');
 const { setupChatSocket } = require('./sockets/chat');
 const { setIo: setNotificationIo } = require('./routes/notifications');
 const db = require('./config/database');
+const aiChatRoutes = require('./routes/aiChat');
 
 // ============================================
 // MIDDLEWARE
@@ -130,9 +131,10 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/ai', aiRoutes);
+
 app.use('/api/jobs', jobRoutes);
 app.use('/api/admin/chatbot', adminChatbotRoutes);
+app.use('/api/ai/chat', aiChatRoutes);
 app.use('/api/payments', paymentRoutes);
 
 // ============================================
