@@ -13,13 +13,13 @@ class AdminChatbot {
       'parents': this.handleParents.bind(this),
       'reports': this.handleReports.bind(this),
       'reviews': this.handleReviews.bind(this),
-      
+
       // User lookup commands
       'find': this.handleFindUser.bind(this),
       'search': this.handleFindUser.bind(this),
       'lookup': this.handleFindUser.bind(this),
       'user': this.handleFindUser.bind(this),
-      
+
       // Moderation commands
       'warn': this.handleWarn.bind(this),
       'warning': this.handleWarn.bind(this),
@@ -27,11 +27,11 @@ class AdminChatbot {
       'ban': this.handleBan.bind(this),
       'activate': this.handleActivate.bind(this),
       'restore': this.handleActivate.bind(this),
-      
+
       // Booking commands
       'bookings': this.handleBookings.bind(this),
       'cancellations': this.handleCancellations.bind(this),
-      
+
       // Help
       'help': this.handleHelp.bind(this),
       '?': this.handleHelp.bind(this),
@@ -42,19 +42,51 @@ class AdminChatbot {
     const lower = message.toLowerCase().trim();
     const words = lower.split(' ');
     const command = words[0];
-    
-    // Check if command exists
+
     if (this.commands[command]) {
       return await this.commands[command](adminId, message, words);
     }
-    
-    // Check if message contains a user name pattern
+
     const nameMatch = message.match(/["']([^"']+)["']/);
     if (nameMatch) {
       return await this.handleFindUser(adminId, message, words);
     }
-    
+
     return this.getHelpResponse();
+  }
+
+  // ============================================
+  // HELPER: resolve a user by ID or by name
+  // ============================================
+  async resolveUser(user) {
+    if (!user) return null;
+
+    // Case 1: we have an ID
+    if (user.id) {
+      const r = await db.query(
+        `SELECT id, first_name, last_name, email, role, is_active, suspended_at
+         FROM users WHERE id = $1`,
+        [user.id]
+      );
+      return r.rows[0] || null;
+    }
+
+    // Case 2: we have a name — search by it
+    if (user.name) {
+      const r = await db.query(
+        `SELECT id, first_name, last_name, email, role, is_active, suspended_at
+         FROM users
+         WHERE CONCAT(first_name, ' ', last_name) ILIKE $1
+            OR first_name ILIKE $1
+            OR last_name ILIKE $1
+         ORDER BY id DESC
+         LIMIT 1`,
+        [`%${user.name}%`]
+      );
+      return r.rows[0] || null;
+    }
+
+    return null;
   }
 
   // ============================================
@@ -102,13 +134,13 @@ Type **help** for available commands`,
       WHERE is_active = true 
       GROUP BY role
     `);
-    
+
     let response = '👤 **User Breakdown**\n━━━━━━━━━━━━━━━━━━\n';
     result.rows.forEach(row => {
       const emoji = row.role === 'parent' ? '👨‍👩‍👦' : row.role === 'babysitter' ? '👶' : '🛡️';
       response += `${emoji} ${row.role.charAt(0).toUpperCase() + row.role.slice(1)}: ${row.count}\n`;
     });
-    
+
     return { response, type: 'users' };
   }
 
@@ -123,7 +155,7 @@ Type **help** for available commands`,
       JOIN users u ON u.id = bp.user_id
       WHERE u.is_active = true
     `);
-    
+
     const avgRating = await db.query(`
       SELECT COALESCE(AVG(rating), 0) as avg_rating 
       FROM reviews
@@ -151,7 +183,7 @@ Type **help** for available commands`,
 🏆 **Top 5 Babysitters by Bookings:**
 `;
     topBabysitters.rows.forEach((bs, i) => {
-      response += `  ${i+1}. ${bs.first_name} ${bs.last_name} - ${bs.bookings} bookings\n`;
+      response += `  ${i + 1}. ${bs.first_name} ${bs.last_name} - ${bs.bookings} bookings\n`;
     });
 
     return { response, type: 'babysitters' };
@@ -187,7 +219,7 @@ Type **help** for available commands`,
 🏆 **Top 5 Parents by Bookings:**
 `;
     topParents.rows.forEach((p, i) => {
-      response += `  ${i+1}. ${p.first_name} ${p.last_name} - ${p.bookings} bookings\n`;
+      response += `  ${i + 1}. ${p.first_name} ${p.last_name} - ${p.bookings} bookings\n`;
     });
 
     return { response, type: 'parents' };
@@ -235,7 +267,7 @@ Type **help** for available commands`,
 📋 **Recent Pending Reports:**
 `;
     recentReports.rows.forEach((r, i) => {
-      response += `  ${i+1}. #${r.id} - ${r.first_name} ${r.last_name} (${r.severity})\n`;
+      response += `  ${i + 1}. #${r.id} - ${r.first_name} ${r.last_name} (${r.severity})\n`;
       response += `     Reason: ${r.reason}\n`;
     });
 
@@ -272,7 +304,7 @@ Type **help** for available commands`,
 `;
     recentReviews.rows.forEach((r, i) => {
       const stars = '⭐'.repeat(Math.round(r.rating));
-      response += `  ${i+1}. ${r.first_name} ${r.last_name}: ${stars} ${r.rating}/5\n`;
+      response += `  ${i + 1}. ${r.first_name} ${r.last_name}: ${stars} ${r.rating}/5\n`;
       response += `     "${r.comment?.substring(0, 50)}${r.comment?.length > 50 ? '...' : ''}"\n`;
     });
 
@@ -284,13 +316,11 @@ Type **help** for available commands`,
   // ============================================
 
   async handleFindUser(adminId, message, words) {
-    // Extract name from quotes or after command
     let searchTerm = '';
     const quotedMatch = message.match(/["']([^"']+)["']/);
     if (quotedMatch) {
       searchTerm = quotedMatch[1];
     } else {
-      // Remove command word and get remaining
       const parts = message.split(' ');
       if (parts.length > 1) {
         searchTerm = parts.slice(1).join(' ');
@@ -330,14 +360,15 @@ Example: **find "John Doe"** or **user "john@email.com"**`,
       const status = user.is_active ? '🟢 Active' : '🔴 Inactive';
       const suspension = user.suspended_at ? `⛔ Suspended: ${new Date(user.suspended_at).toLocaleDateString()}` : '✅ Not Suspended';
       const roleEmoji = user.role === 'parent' ? '👨‍👩‍👦' : user.role === 'babysitter' ? '👶' : '🛡️';
-      
-      response += `${i+1}. **${user.first_name} ${user.last_name}** ${roleEmoji}
+
+      response += `${i + 1}. **${user.first_name} ${user.last_name}** ${roleEmoji}
    📧 ${user.email}
    🔹 Role: ${user.role}
+   🔹 ID: ${user.id}
    🔹 Status: ${status}
    🔹 ${suspension}
    🔹 Joined: ${new Date(user.created_at).toLocaleDateString()}
-   📝 **Commands:** warn "${user.first_name} ${user.last_name}" | suspend "${user.first_name} ${user.last_name}" | activate "${user.first_name} ${user.last_name}"
+   📝 **Commands:** warn "ID ${user.id}" "reason" | suspend "ID ${user.id}" "reason" 7 | ban "ID ${user.id}" "reason"
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `;
     });
@@ -351,68 +382,57 @@ Example: **find "John Doe"** or **user "john@email.com"**`,
 
   async handleWarn(adminId, message, words) {
     const { user, reason } = this.extractUserAndReason(message, words);
-    
+
     if (!user) {
       return {
         response: `❌ **Please specify a user to warn.**
-Example: **warn "John Doe" "Unprofessional behavior"**`,
+Example: **warn "John Doe" "Unprofessional behavior"** or **warn "ID 1343" "spam"**`,
         type: 'error'
       };
     }
 
-    // Check if user exists
-    const userResult = await db.query(
-      'SELECT id, first_name, last_name, email, role FROM users WHERE id = $1',
-      [user.id]
-    );
-    
-    if (userResult.rows.length === 0) {
+    const userData = await this.resolveUser(user);
+    if (!userData) {
       return {
         response: `❌ **User not found.** Please check the user ID or name.`,
         type: 'error'
       };
     }
 
-    const userData = userResult.rows[0];
-
-    // Create warning report
     const report = await db.query(
       `INSERT INTO reports (
         reporter_id, reported_user_id, reason, description, 
         category, severity, status, admin_action
       ) VALUES ($1, $2, $3, $4, 'unprofessional_behavior', 'medium', 'resolved', 'warning')
       RETURNING *`,
-      [adminId, user.id, reason || 'Warning issued by admin', `Admin warning: ${reason || 'Please follow community guidelines.'}`]
+      [adminId, userData.id, reason || 'Warning issued by admin', `Admin warning: ${reason || 'Please follow community guidelines.'}`]
     );
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [adminId, 'warning', 'user', user.id, JSON.stringify({ reason, report_id: report.rows[0].id })]
+      [adminId, 'warning', 'user', userData.id, JSON.stringify({ reason, report_id: report.rows[0].id })]
     );
 
-    // Send notification
     await createNotification(
-      user.id,
+      userData.id,
       'warning_received',
       '⚠️ Warning Issued',
       `You have received a warning from admin. Reason: ${reason || 'Please follow community guidelines.'}`,
       '/dashboard'
     );
 
-    // Check for auto-suspension
-    const warnings = await getUserWarnings(user.id);
+    const warnings = await getUserWarnings(userData.id);
     let autoSuspendMsg = '';
     if (warnings.count >= 3) {
-      await checkAndApplySuspension(user.id);
+      await checkAndApplySuspension(userData.id);
       autoSuspendMsg = `\n\n⚠️ **Auto-Suspension Triggered:** User has 3 warnings and has been auto-suspended for 7 days.`;
     }
 
     return {
       response: `✅ **Warning Issued** ${autoSuspendMsg}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 **User:** ${userData.first_name} ${userData.last_name}
+👤 **User:** ${userData.first_name} ${userData.last_name} (ID ${userData.id})
 📧 ${userData.email}
 📝 **Reason:** ${reason || 'Warning issued by admin'}
 ⚠️ **Total Warnings:** ${warnings.count} / 3
@@ -426,33 +446,27 @@ The user has been notified.`,
 
   async handleSuspend(adminId, message, words) {
     const { user, reason, duration } = this.extractUserAndReason(message, words, true);
-    
+
     if (!user) {
       return {
         response: `❌ **Please specify a user to suspend.**
-Example: **suspend "John Doe" "Violation of terms" 7** (7 days)`,
+Example: **suspend "John Doe" "Violation" 7** or **suspend "ID 1343" "spam" 7**`,
         type: 'error'
       };
     }
 
-    const userResult = await db.query(
-      'SELECT id, first_name, last_name, email, role FROM users WHERE id = $1',
-      [user.id]
-    );
-    
-    if (userResult.rows.length === 0) {
+    const userData = await this.resolveUser(user);
+    if (!userData) {
       return {
         response: `❌ **User not found.** Please check the user ID or name.`,
         type: 'error'
       };
     }
 
-    const userData = userResult.rows[0];
     const suspendDays = duration || 7;
     const suspensionEnd = new Date();
     suspensionEnd.setDate(suspensionEnd.getDate() + suspendDays);
 
-    // Suspend user
     await db.query(
       `UPDATE users 
        SET suspended_at = CURRENT_TIMESTAMP,
@@ -461,29 +475,26 @@ Example: **suspend "John Doe" "Violation of terms" 7** (7 days)`,
            suspended_by = $3,
            is_active = false
        WHERE id = $4`,
-      [reason || 'Suspended by admin', suspensionEnd, adminId, user.id]
+      [reason || 'Suspended by admin', suspensionEnd, adminId, userData.id]
     );
 
-    // Create report
     const report = await db.query(
       `INSERT INTO reports (
         reporter_id, reported_user_id, reason, description, 
         category, severity, status, admin_action
       ) VALUES ($1, $2, $3, $4, 'unprofessional_behavior', 'high', 'resolved', 'suspension')
       RETURNING *`,
-      [adminId, user.id, `Suspended for ${suspendDays} days`, reason || 'Suspended by admin']
+      [adminId, userData.id, `Suspended for ${suspendDays} days`, reason || 'Suspended by admin']
     );
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [adminId, 'suspension', 'user', user.id, JSON.stringify({ reason, duration: suspendDays, report_id: report.rows[0].id })]
+      [adminId, 'suspension', 'user', userData.id, JSON.stringify({ reason, duration: suspendDays, report_id: report.rows[0].id })]
     );
 
-    // Send notification
     await createNotification(
-      user.id,
+      userData.id,
       'account_suspended',
       `⛔ Account Suspended (${suspendDays} days)`,
       `Your account has been suspended for ${suspendDays} days. Reason: ${reason || 'Violation of community guidelines.'}`,
@@ -493,7 +504,7 @@ Example: **suspend "John Doe" "Violation of terms" 7** (7 days)`,
     return {
       response: `⛔ **User Suspended**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 **User:** ${userData.first_name} ${userData.last_name}
+👤 **User:** ${userData.first_name} ${userData.last_name} (ID ${userData.id})
 📧 ${userData.email}
 📝 **Reason:** ${reason || 'Suspended by admin'}
 ⏱️ **Duration:** ${suspendDays} days
@@ -508,30 +519,23 @@ The user has been notified.`,
 
   async handleBan(adminId, message, words) {
     const { user, reason } = this.extractUserAndReason(message, words);
-    
+
     if (!user) {
       return {
         response: `❌ **Please specify a user to ban.**
-Example: **ban "John Doe" "Severe violation"**`,
+Example: **ban "John Doe" "Severe violation"** or **ban "ID 1343" "unsafe"**`,
         type: 'error'
       };
     }
 
-    const userResult = await db.query(
-      'SELECT id, first_name, last_name, email, role FROM users WHERE id = $1',
-      [user.id]
-    );
-    
-    if (userResult.rows.length === 0) {
+    const userData = await this.resolveUser(user);
+    if (!userData) {
       return {
         response: `❌ **User not found.** Please check the user ID or name.`,
         type: 'error'
       };
     }
 
-    const userData = userResult.rows[0];
-
-    // Ban user
     await db.query(
       `UPDATE users 
        SET is_active = false,
@@ -540,29 +544,26 @@ Example: **ban "John Doe" "Severe violation"**`,
            suspended_by = $2,
            suspension_end_date = NULL
        WHERE id = $3`,
-      [`BANNED: ${reason || 'Permanent ban for severe violation'}`, adminId, user.id]
+      [`BANNED: ${reason || 'Permanent ban for severe violation'}`, adminId, userData.id]
     );
 
-    // Create report
     await db.query(
       `INSERT INTO reports (
         reporter_id, reported_user_id, reason, description, 
         category, severity, status, admin_action
       ) VALUES ($1, $2, $3, $4, 'unprofessional_behavior', 'critical', 'resolved', 'ban')
       RETURNING *`,
-      [adminId, user.id, `Banned permanently`, reason || 'Permanent ban for severe violation']
+      [adminId, userData.id, `Banned permanently`, reason || 'Permanent ban for severe violation']
     );
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [adminId, 'ban', 'user', user.id, JSON.stringify({ reason })]
+      [adminId, 'ban', 'user', userData.id, JSON.stringify({ reason })]
     );
 
-    // Send notification
     await createNotification(
-      user.id,
+      userData.id,
       'account_banned',
       '🚫 Account Banned',
       `Your account has been permanently banned. Reason: ${reason || 'Severe violation of terms.'}`,
@@ -572,7 +573,7 @@ Example: **ban "John Doe" "Severe violation"**`,
     return {
       response: `🚫 **User Banned Permanently**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 **User:** ${userData.first_name} ${userData.last_name}
+👤 **User:** ${userData.first_name} ${userData.last_name} (ID ${userData.id})
 📧 ${userData.email}
 📝 **Reason:** ${reason || 'Permanent ban for severe violation'}
 
@@ -584,38 +585,31 @@ The user has been notified. This action is permanent.`,
 
   async handleActivate(adminId, message, words) {
     const { user, reason } = this.extractUserAndReason(message, words);
-    
+
     if (!user) {
       return {
         response: `❌ **Please specify a user to activate/restore.**
-Example: **activate "John Doe" "Restored after review"**`,
+Example: **activate "John Doe" "Restored"** or **activate "ID 1343" "appealed"**`,
         type: 'error'
       };
     }
 
-    const userResult = await db.query(
-      'SELECT id, first_name, last_name, email, role, suspended_at FROM users WHERE id = $1',
-      [user.id]
-    );
-    
-    if (userResult.rows.length === 0) {
+    const userData = await this.resolveUser(user);
+    if (!userData) {
       return {
         response: `❌ **User not found.** Please check the user ID or name.`,
         type: 'error'
       };
     }
 
-    const userData = userResult.rows[0];
-
     if (!userData.suspended_at) {
       return {
         response: `ℹ️ **User is already active.**
-👤 ${userData.first_name} ${userData.last_name} is not suspended.`,
+👤 ${userData.first_name} ${userData.last_name} (ID ${userData.id}) is not suspended.`,
         type: 'info'
       };
     }
 
-    // Restore user
     await db.query(
       `UPDATE users 
        SET suspended_at = NULL,
@@ -623,19 +617,17 @@ Example: **activate "John Doe" "Restored after review"**`,
            suspension_end_date = NULL,
            is_active = true
        WHERE id = $1`,
-      [user.id]
+      [userData.id]
     );
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [adminId, 'restore_user', 'user', user.id, JSON.stringify({ reason: reason || 'Restored by admin' })]
+      [adminId, 'restore_user', 'user', userData.id, JSON.stringify({ reason: reason || 'Restored by admin' })]
     );
 
-    // Send notification
     await createNotification(
-      user.id,
+      userData.id,
       'account_restored',
       '✅ Account Restored',
       `Your account has been restored. ${reason || 'Please continue to follow community guidelines.'}`,
@@ -645,7 +637,7 @@ Example: **activate "John Doe" "Restored after review"**`,
     return {
       response: `✅ **User Restored**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 **User:** ${userData.first_name} ${userData.last_name}
+👤 **User:** ${userData.first_name} ${userData.last_name} (ID ${userData.id})
 📧 ${userData.email}
 📝 **Reason:** ${reason || 'Restored by admin'}
 
@@ -698,7 +690,7 @@ The user has been notified and can now access their account.`,
 📋 **Recent Bookings:**
 `;
     recentBookings.rows.forEach((b, i) => {
-      response += `  ${i+1}. #${b.id} - ${b.parent_name} → ${b.babysitter_name}\n`;
+      response += `  ${i + 1}. #${b.id} - ${b.parent_name} → ${b.babysitter_name}\n`;
       response += `     Status: ${b.status} | Amount: $${parseFloat(b.total_amount || 0).toFixed(2)}\n`;
     });
 
@@ -739,7 +731,7 @@ The user has been notified and can now access their account.`,
 📋 **Recent Cancellations:**
 `;
     recentCancellations.rows.forEach((c, i) => {
-      response += `  ${i+1}. #${c.id} - ${c.parent_name} ↔ ${c.babysitter_name}\n`;
+      response += `  ${i + 1}. #${c.id} - ${c.parent_name} ↔ ${c.babysitter_name}\n`;
       response += `     Reason: ${c.cancellation_reason || 'No reason provided'}\n`;
       response += `     Cancelled by: ${c.cancelled_by || 'System'}\n`;
     });
@@ -767,19 +759,19 @@ The user has been notified and can now access their account.`,
   • **cancellations** - Show cancellation report
 
 🔍 **User Lookup:**
-  • **find "John Doe"** - Search for a user
-  • **user "john@email.com"** - Find user by email
+  • **find "John Doe"** - Search by name
+  • **find "john@email.com"** - Search by email
 
 ⚡ **Moderation:**
-  • **warn "User Name" "Reason"** - Issue a warning
-  • **suspend "User Name" "Reason" 7** - Suspend for X days
-  • **ban "User Name" "Reason"** - Ban permanently
-  • **activate "User Name" "Reason"** - Restore account
+  • **warn "Name or ID" "Reason"** - Issue a warning
+  • **suspend "Name or ID" "Reason" 7** - Suspend for X days
+  • **ban "Name or ID" "Reason"** - Ban permanently
+  • **activate "Name or ID" "Reason"** - Restore account
 
 💡 **Tips:**
-  • Use quotes for names with spaces: "John Doe"
-  • For suspension: **suspend "John Doe" "Violation" 14** (14 days)
-  • Type **help** or **?** to see this menu again
+  • You can use quoted names: **ban "John Doe" "spam"**
+  • Or IDs: **ban "ID 1343" "spam"**
+  • Free-form questions like **"how many babysitters?"** also work (AI-powered)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Example: **find "Sarah Miller"**`,
@@ -792,54 +784,77 @@ Example: **find "Sarah Miller"**`,
   }
 
   // ============================================
-  // HELPER FUNCTIONS
+  // HELPER: extract user + reason + duration from a command
   // ============================================
-
   extractUserAndReason(message, words, hasDuration = false) {
     let user = null;
     let reason = '';
     let duration = null;
 
-    // Try to extract from quotes
-    const quotedMatches = message.match(/["']([^"']+)["']/g);
-    if (quotedMatches && quotedMatches.length >= 1) {
-      const userName = quotedMatches[0].replace(/["']/g, '');
-      
-      // Find user by name
-      const userResult = db.query(
-        `SELECT id, first_name, last_name, email, role 
-         FROM users 
-         WHERE CONCAT(first_name, ' ', last_name) ILIKE $1
-         LIMIT 1`,
-        [`%${userName}%`]
-      );
-      
-      // This needs to be awaited properly - but we're in a sync method
-      // We'll handle this differently in the actual command handlers
-      return { user: { id: null, name: userName }, reason: '', duration: null };
+    // 1. Highest priority: "ID 1234", "#1234", "id:1234", or a bare number
+    //    after the command word
+    const idMatch = message.match(/\b(?:id[:\s]*|#)(\d+)\b/i);
+    if (idMatch) {
+      user = { id: parseInt(idMatch[1]), name: null };
     }
 
-    // If no quotes, try to parse from words
-    if (words.length >= 3) {
-      // Try to find user by name (first_name + last_name)
+    // 2. Quoted name(s): "John Doe" or ban "John Doe" "reason"
+    if (!user) {
+      const quotedMatches = message.match(/["']([^"']+)["']/g);
+      if (quotedMatches && quotedMatches.length >= 1) {
+        const userName = quotedMatches[0].replace(/["']/g, '');
+        user = { id: null, name: userName };
+
+        if (quotedMatches.length >= 2) {
+          reason = quotedMatches[1].replace(/["']/g, '');
+        }
+      }
+    }
+
+    // 3. Unquoted name: "ban John Doe for spam"
+    if (!user && words.length >= 2) {
+      const stopWords = ['for', 'because', 'reason', 'duration', '-d', 'id', '#'];
       const nameParts = [];
       let i = 1;
-      while (i < words.length && !['for', 'because', 'reason', '-d', 'duration'].includes(words[i])) {
+      while (i < words.length && !stopWords.includes(words[i].toLowerCase())) {
+        if (/^\d+$/.test(words[i])) break;
         nameParts.push(words[i]);
         i++;
       }
-      
       if (nameParts.length > 0) {
-        const name = nameParts.join(' ');
-        return { user: { id: null, name }, reason: '', duration: null };
+        user = { id: null, name: nameParts.join(' ') };
+
+        // Everything after "for" / "because" is the reason
+        const reasonStart = words.findIndex(w =>
+          ['for', 'because', 'reason'].includes(w.toLowerCase())
+        );
+        if (reasonStart !== -1 && reasonStart < words.length - 1) {
+          reason = words.slice(reasonStart + 1).join(' ').replace(/["']/g, '');
+        }
       }
     }
 
-    return { user: null, reason: '', duration: null };
+    // 4. Optional duration for suspend: last number in the message
+    if (hasDuration) {
+      const numbers = message.match(/\b\d+\b/g);
+      if (numbers && numbers.length > 0) {
+        // Only treat the last number as duration if it's not part of an ID
+        const lastNum = parseInt(numbers[numbers.length - 1]);
+        const isIdNumber = user?.id === lastNum;
+        if (!isIdNumber && lastNum >= 1 && lastNum <= 365) {
+          duration = lastNum;
+        }
+      }
+    }
+
+    return { user, reason, duration };
   }
 }
 
-// Helper functions for warnings
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
 async function getUserWarnings(userId) {
   const result = await db.query(
     `SELECT COUNT(*) as count 
@@ -856,7 +871,7 @@ async function getUserWarnings(userId) {
 async function checkAndApplySuspension(userId) {
   const suspensionEnd = new Date();
   suspensionEnd.setDate(suspensionEnd.getDate() + 7);
-  
+
   await db.query(
     `UPDATE users 
      SET suspended_at = CURRENT_TIMESTAMP,
