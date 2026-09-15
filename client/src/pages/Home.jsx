@@ -24,7 +24,7 @@ function Home() {
       {/* HERO SECTION */}
       <div style={{
   background: `
-  linear-gradient(135deg, rgba(79,70,229,0.85), rgba(124,58,237,0.85), rgba(99,102,241,0.85)),
+  linear-gradient(135deg, rgba(79,70,229,0.45), rgba(124,58,237,0.45), rgba(99,102,241,0.45)),
   url('/babysitter.jpg') center 40% / 110% no-repeat
 `,
   borderRadius: 'var(--radius-lg)',
@@ -81,20 +81,138 @@ function Home() {
       </section>
 
       {/* ROLES */}
-      <section className="section">
-        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <div className="animate-slide-up" style={{ ...stepCardStyle, background: `linear-gradient(135deg, ${COLORS.primary}08, ${COLORS.primary}03)`, border: `1px solid ${COLORS.primary}22`, textAlign: 'left', maxWidth: 400 }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: '1.15rem', fontWeight: '700', color: COLORS.primary }}>{t('home.forParents')}</h3>
-            <p style={{ margin: '0 0 18px', color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>{t('home.parentDesc')}</p>
-            <Link to="/register" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryLight})`, color: '#fff', padding: '10px 22px', borderRadius: 'var(--radius)', fontWeight: '600', fontSize: '0.88rem', textDecoration: 'none' }}>{t('home.start')} {String.fromCodePoint(8594)}</Link>
-          </div>
-          <div className="animate-slide-up" style={{ ...stepCardStyle, background: `linear-gradient(135deg, ${COLORS.rose}08, ${COLORS.rose}03)`, border: `1px solid ${COLORS.rose}22`, textAlign: 'left', maxWidth: 400, animationDelay: '0.15s' }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: '1.15rem', fontWeight: '700', color: COLORS.rose }}>{t('home.forBabysitters')}</h3>
-            <p style={{ margin: '0 0 18px', color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>{t('home.babysitterDesc')}</p>
-            <Link to="/register" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: `linear-gradient(135deg, ${COLORS.rose}, ${COLORS.purple})`, color: '#fff', padding: '10px 22px', borderRadius: 'var(--radius)', fontWeight: '600', fontSize: '0.88rem', textDecoration: 'none' }}>{t('home.start')} {String.fromCodePoint(8594)}</Link>
-          </div>
+      {/* ROLES — with background images */}
+<section className="section">
+  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+    {[
+      {
+        key: 'parents',
+        img: '/roles/parents.jpg',
+        title: t('home.forParents'),
+        desc: t('home.parentDesc'),
+        accent: COLORS.primary,
+        btnGradient: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.primaryLight})`,
+      },
+      {
+        key: 'babysitters',
+        img: '/roles/babysitters.jpg',
+        title: t('home.forBabysitters'),
+        desc: t('home.babysitterDesc'),
+        accent: COLORS.rose,
+        btnGradient: `linear-gradient(135deg, ${COLORS.rose}, ${COLORS.purple})`,
+      },
+    ].map((role, i) => (
+      <div
+        key={role.key}
+        className="animate-slide-up"
+        style={{
+          position: 'relative',
+          flex: '1 1 360px',
+          maxWidth: 440,
+          minHeight: 260,
+          borderRadius: 'var(--radius-xl)',
+          overflow: 'hidden',
+          border: `1px solid ${role.accent}22`,
+          boxShadow: 'var(--shadow-sm)',
+          animationDelay: `${i * 0.15}s`,
+          display: 'flex',
+          alignItems: 'flex-end',
+        }}
+      >
+        {/* Background image */}
+        <img
+          src={role.img}
+          alt=""
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            zIndex: 0,
+          }}
+        />
+
+        {/* Fallback tint (visible if the image fails to load) */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: `linear-gradient(135deg, ${role.accent}14, ${role.accent}04)`,
+            zIndex: 0,
+          }}
+        />
+
+        {/* Dark gradient overlay so the text stays readable */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.55) 70%, rgba(0,0,0,0.75) 100%)',
+            zIndex: 1,
+          }}
+        />
+
+        {/* Foreground content */}
+        <div style={{
+          position: 'relative',
+          zIndex: 2,
+          padding: '28px 26px',
+          width: '100%',
+        }}>
+          <h3 style={{
+            margin: '0 0 10px',
+            fontSize: '1.25rem',
+            fontWeight: '800',
+            color: '#fff',
+            textShadow: '0 1px 4px rgba(0,0,0,0.35)',
+          }}>
+            {role.title}
+          </h3>
+          <p style={{
+            margin: '0 0 20px',
+            color: 'rgba(255,255,255,0.92)',
+            fontSize: '0.92rem',
+            lineHeight: 1.6,
+            textShadow: '0 1px 3px rgba(0,0,0,0.3)',
+          }}>
+            {role.desc}
+          </p>
+          <Link
+            to="/register"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: role.btnGradient,
+              color: '#fff',
+              padding: '11px 24px',
+              borderRadius: 'var(--radius)',
+              fontWeight: '700',
+              fontSize: '0.9rem',
+              textDecoration: 'none',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.35)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.25)';
+            }}
+          >
+            {t('home.start')} →
+          </Link>
         </div>
-      </section>
+      </div>
+    ))}
+  </div>
+</section>
 
       {/* VALUES — image + word + description */}
       <section className="section">
@@ -105,28 +223,28 @@ function Home() {
   <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
     {[
       {
-        img: '/values/verified.jpg',
+        img: '/values/veri.jpg',
         icon: '🛡️',
         title: t('home.valueVerified'),
         desc: t('home.valueVerifiedDesc'),
         color: COLORS.primary,
       },
       {
-        img: '/values/caring.jpg',
+        img: '/values/cari.jpg',
         icon: '💚',
         title: t('home.valueCaring'),
         desc: t('home.valueCaringDesc'),
         color: COLORS.teal,
       },
       {
-        img: '/values/reliable.jpg',
+        img: '/values/relia.jpg',
         icon: '🕐',
         title: t('home.valueReliable'),
         desc: t('home.valueReliableDesc'),
         color: COLORS.purple,
       },
       {
-        img: '/values/trusted.jpg',
+        img: '/values/trust.jpg',
         icon: '🏠',
         title: t('home.valueTrusted'),
         desc: t('home.valueTrustedDesc'),
