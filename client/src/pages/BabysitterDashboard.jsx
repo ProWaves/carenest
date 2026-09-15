@@ -74,6 +74,16 @@ function BabysitterDashboard() {
   // ✅ Drill-down modal state
   const [detailModal, setDetailModal] = useState({ open: false, type: null, statusFilter: null });
 
+  // ✅ NEW: Payouts (bank account) state
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [payoutForm, setPayoutForm] = useState({
+    bank_name: '',
+    holder_name: '',
+    iban: '',
+    is_default: true,
+  });
+  const [savingPayout, setSavingPayout] = useState(false);
+
   // Load all data
   useEffect(() => {
     loadAllData();
@@ -139,6 +149,15 @@ function BabysitterDashboard() {
         console.error('❌ Slots load error:', slotError);
       }
 
+      // ✅ NEW: Load bank accounts
+      try {
+        const bankRes = await API.get('/payments/bank-accounts');
+        setBankAccounts(bankRes.data || []);
+      } catch (bankError) {
+        console.error('❌ Bank accounts load error:', bankError);
+        setBankAccounts([]);
+      }
+
       // Load gallery
       if (user?.id) {
         try {
@@ -195,13 +214,54 @@ function BabysitterDashboard() {
   };
 
   // ============================================
+  // ✅ NEW: Payouts handlers
+  // ============================================
+  const loadBankAccounts = async () => {
+    try {
+      const res = await API.get('/payments/bank-accounts');
+      setBankAccounts(res.data || []);
+    } catch (err) {
+      console.error('Load bank accounts error:', err);
+    }
+  };
+
+  const saveBankAccount = async (e) => {
+    e.preventDefault();
+    if (!payoutForm.bank_name.trim() || !payoutForm.holder_name.trim() || !payoutForm.iban.trim()) {
+      addToast('Please fill in all fields', 'error');
+      return;
+    }
+    setSavingPayout(true);
+    try {
+      await API.post('/payments/bank-accounts', payoutForm);
+      addToast('Bank account saved!', 'success');
+      setPayoutForm({ bank_name: '', holder_name: '', iban: '', is_default: true });
+      await loadBankAccounts();
+    } catch (err) {
+      addToast(err.response?.data?.error || 'Failed to save bank account', 'error');
+    } finally {
+      setSavingPayout(false);
+    }
+  };
+
+  const deleteBankAccount = async (id) => {
+    if (!window.confirm('Remove this bank account?')) return;
+    try {
+      await API.delete(`/payments/bank-accounts/${id}`);
+      addToast('Bank account removed', 'success');
+      setBankAccounts((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      addToast(err.response?.data?.error || 'Failed to remove', 'error');
+    }
+  };
+
+  // ============================================
   // DRILL-DOWN HELPERS
   // ============================================
   const getDetailRows = () => {
     if (detailModal.statusFilter) {
       return bookings.filter(b => (b.status || '').toLowerCase() === detailModal.statusFilter);
     }
-    // Default: completed
     return bookings.filter(b => (b.status || '').toLowerCase() === 'completed');
   };
 
@@ -1307,7 +1367,7 @@ function BabysitterDashboard() {
   );
 
   // ============================================
-  // RENDER EARNINGS TAB — NOW CLICKABLE
+  // RENDER EARNINGS TAB
   // ============================================
   const renderEarningsTab = () => (
     <div className="dash-content">
@@ -1347,7 +1407,6 @@ function BabysitterDashboard() {
         </div>
       </div>
 
-      {/* Status breakdown — clickable per status */}
       <div className="stats-grid admin-stats" style={{ marginBottom: 20 }}>
         {Object.entries(earnings.statusBreakdown).map(([status, count]) => (
           <div
@@ -1386,6 +1445,147 @@ function BabysitterDashboard() {
   );
 
   // ============================================
+  // ✅ NEW: RENDER PAYOUTS TAB
+  // ============================================
+  const renderPayoutsTab = () => (
+    <div className="dash-content">
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ margin: 0 }}>💳 Payout Details</h3>
+        <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+          Add the account where you want to receive your earnings
+        </p>
+      </div>
+
+      {bankAccounts.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          {bankAccounts.map((acc) => (
+            <div
+              key={acc.id}
+              style={{
+                padding: '14px 18px',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--color-border-light)',
+                background: 'var(--color-surface)',
+                marginBottom: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <div
+                style={{
+                  width: 40, height: 40,
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
+                  color: 'white',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1rem',
+                  flexShrink: 0,
+                }}
+              >
+                🏦
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                  {acc.bank_name}
+                  {acc.is_default && (
+                    <span style={{ marginLeft: 8, fontSize: '0.68rem', background: 'var(--color-primary-100)', color: 'var(--color-primary-700)', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                      Default
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                  {acc.holder_name} · ****{acc.iban?.slice(-4)}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-danger"
+                onClick={() => deleteBankAccount(acc.id)}
+              >
+                🗑️
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div
+        style={{
+          padding: '24px',
+          borderRadius: 'var(--radius-lg)',
+          border: '1px solid var(--color-border-light)',
+          background: 'var(--color-surface)',
+        }}
+      >
+        <h4 style={{ margin: '0 0 16px', fontSize: '1rem' }}>
+          {bankAccounts.length > 0 ? 'Add another account' : 'Add your first account'}
+        </h4>
+
+        <form onSubmit={saveBankAccount}>
+          <div className="form-group">
+            <label>Bank / Provider Name</label>
+            <input
+              type="text"
+              value={payoutForm.bank_name}
+              onChange={(e) => setPayoutForm({ ...payoutForm, bank_name: e.target.value })}
+              placeholder="e.g., Bank of Beirut, OMT, Whish"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Account Holder Name</label>
+            <input
+              type="text"
+              value={payoutForm.holder_name}
+              onChange={(e) => setPayoutForm({ ...payoutForm, holder_name: e.target.value })}
+              placeholder="Name as it appears on the account"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label>IBAN / Account Number</label>
+            <input
+              type="text"
+              value={payoutForm.iban}
+              onChange={(e) => setPayoutForm({ ...payoutForm, iban: e.target.value })}
+              placeholder="LB00 0000 0000 0000 0000 0000 0000"
+              required
+            />
+          </div>
+
+          <button type="submit" className="btn btn-primary" disabled={savingPayout}>
+            {savingPayout ? 'Saving...' : '💾 Save Bank Account'}
+          </button>
+        </form>
+      </div>
+
+      <div
+        style={{
+          marginTop: 20,
+          padding: '14px 18px',
+          borderRadius: 'var(--radius)',
+          background: 'var(--color-bg-alt)',
+          border: '1px solid var(--color-border-light)',
+          fontSize: '0.85rem',
+          color: 'var(--color-text-secondary)',
+          lineHeight: 1.6,
+        }}
+      >
+        <strong style={{ color: 'var(--color-text)' }}>ℹ️ How payouts work</strong>
+        <p style={{ margin: '6px 0 0' }}>
+          Your earnings are credited to your CareNest wallet after you confirm receiving cash from
+          parents. When you request a withdrawal, our team transfers the money to the account above
+          within 3–5 business days.
+        </p>
+      </div>
+    </div>
+  );
+
+  // ============================================
   // MAIN RENDER
   // ============================================
   if (loading) {
@@ -1410,6 +1610,7 @@ function BabysitterDashboard() {
     { id: 'emergency', label: '🚨 Emergency' },
     { id: 'gallery', label: '🖼️ Gallery' },
     { id: 'earnings', label: '💰 Earnings' },
+    { id: 'payouts', label: '💳 Payouts' },   // ✅ NEW
   ];
 
   return (
@@ -1445,6 +1646,7 @@ function BabysitterDashboard() {
       {activeTab === 'emergency' && renderEmergencyTab()}
       {activeTab === 'gallery' && renderGalleryTab()}
       {activeTab === 'earnings' && renderEarningsTab()}
+      {activeTab === 'payouts' && renderPayoutsTab()}   {/* ✅ NEW */}
 
       {/* Cancel Booking Modal */}
       {showCancelModal && (

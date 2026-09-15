@@ -6,7 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../components/Toast';
 import PhoneInput from '../components/PhoneInput';
 import BackButton from '../components/BackButton';
-import AIChatbot from '../components/AIChatbotGate';
+import AIChatbot from './components/AIChatbotGate';
 
 function ProfilePage() {
   const { user, setUser } = useAuth();
@@ -19,6 +19,16 @@ function ProfilePage() {
   const [error, setError] = useState('');
   const [showAIChat, setShowAIChat] = useState(false);
 
+  // ✅ NEW: Bank account state
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [payoutForm, setPayoutForm] = useState({
+    bank_name: '',
+    holder_name: '',
+    iban: '',
+    is_default: true,
+  });
+  const [savingPayout, setSavingPayout] = useState(false);
+
   useEffect(() => {
     if (user) {
       setForm({
@@ -30,6 +40,19 @@ function ProfilePage() {
         gender: user.gender || '',
       });
     }
+  }, [user]);
+
+  // ✅ NEW: Load bank accounts on mount
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const res = await API.get('/payments/bank-accounts');
+        setBankAccounts(res.data || []);
+      } catch (err) {
+        console.error('Load bank accounts error:', err);
+      }
+    };
+    if (user) loadAccounts();
   }, [user]);
 
   const handleChange = (e) => {
@@ -82,6 +105,39 @@ function ProfilePage() {
       }
     };
     input.click();
+  };
+
+  // ✅ NEW: Save bank account
+  const saveBankAccount = async (e) => {
+    e.preventDefault();
+    if (!payoutForm.bank_name.trim() || !payoutForm.holder_name.trim() || !payoutForm.iban.trim()) {
+      addToast('Please fill in all fields', 'error');
+      return;
+    }
+    setSavingPayout(true);
+    try {
+      await API.post('/payments/bank-accounts', payoutForm);
+      addToast('Bank account saved!', 'success');
+      setPayoutForm({ bank_name: '', holder_name: '', iban: '', is_default: true });
+      const res = await API.get('/payments/bank-accounts');
+      setBankAccounts(res.data || []);
+    } catch (err) {
+      addToast(err.response?.data?.error || 'Failed to save bank account', 'error');
+    } finally {
+      setSavingPayout(false);
+    }
+  };
+
+  // ✅ NEW: Delete bank account
+  const deleteBankAccount = async (id) => {
+    if (!window.confirm('Remove this bank account?')) return;
+    try {
+      await API.delete(`/payments/bank-accounts/${id}`);
+      addToast('Bank account removed', 'success');
+      setBankAccounts((prev) => prev.filter((a) => a.id !== id));
+    } catch (err) {
+      addToast(err.response?.data?.error || 'Failed to remove', 'error');
+    }
   };
 
   return (
@@ -234,6 +290,115 @@ function ProfilePage() {
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* ✅ NEW: Payment Method section */}
+          <div className="profile-section">
+            <div className="profile-section-header">
+              <div className="profile-section-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="5" width="20" height="14" rx="2" />
+                  <line x1="2" y1="10" x2="22" y2="10" />
+                </svg>
+              </div>
+              <div>
+                <h3>Payment Method</h3>
+                <p>Add a bank account for refunds and payouts</p>
+              </div>
+            </div>
+            <div className="profile-form">
+              {bankAccounts.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  {bankAccounts.map((acc) => (
+                    <div
+                      key={acc.id}
+                      style={{
+                        padding: '14px 18px',
+                        borderRadius: 'var(--radius)',
+                        border: '1px solid var(--color-border-light)',
+                        background: 'var(--color-bg-alt)',
+                        marginBottom: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 14,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 40, height: 40,
+                          borderRadius: 10,
+                          background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
+                          color: 'white',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '1rem',
+                          flexShrink: 0,
+                        }}
+                      >
+                        🏦
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                          {acc.bank_name}
+                          {acc.is_default && (
+                            <span style={{ marginLeft: 8, fontSize: '0.68rem', background: 'var(--color-primary-100)', color: 'var(--color-primary-700)', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                          {acc.holder_name} · ****{acc.iban?.slice(-4)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => deleteBankAccount(acc.id)}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={saveBankAccount} style={{ marginTop: bankAccounts.length > 0 ? 20 : 0 }}>
+                <div className="profile-field">
+                  <label>Bank / Provider Name</label>
+                  <input
+                    type="text"
+                    value={payoutForm.bank_name}
+                    onChange={(e) => setPayoutForm({ ...payoutForm, bank_name: e.target.value })}
+                    placeholder="e.g., Bank of Beirut, OMT, Whish"
+                  />
+                </div>
+
+                <div className="profile-field">
+                  <label>Account Holder Name</label>
+                  <input
+                    type="text"
+                    value={payoutForm.holder_name}
+                    onChange={(e) => setPayoutForm({ ...payoutForm, holder_name: e.target.value })}
+                    placeholder="Name as it appears on the account"
+                  />
+                </div>
+
+                <div className="profile-field">
+                  <label>IBAN / Account Number</label>
+                  <input
+                    type="text"
+                    value={payoutForm.iban}
+                    onChange={(e) => setPayoutForm({ ...payoutForm, iban: e.target.value })}
+                    placeholder="LB00 0000 0000 0000 0000 0000 0000"
+                  />
+                </div>
+
+                <div className="profile-form-actions">
+                  <button type="submit" className="profile-save-btn" disabled={savingPayout}>
+                    {savingPayout ? 'Saving…' : (bankAccounts.length > 0 ? 'Add Another Account' : 'Save Bank Account')}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>
