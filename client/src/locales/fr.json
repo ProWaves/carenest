@@ -30,7 +30,17 @@
     "parents": "Parents",
     "babysitters": "Babysitters",
     "bookings": "Réservations Effectuées",
-    "cities": "Villes Couvertes"
+    "cities": "Villes Couvertes",
+    "values": "Pourquoi les familles nous font confiance",
+"valuesSubtitle": "Chaque babysitter sur SitterSpot est choisi selon les mêmes quatre qualités.",
+"valueVerified": "Vérifié",
+"valueVerifiedDesc": "Chaque babysitter est vérifié avant sa mise en ligne.",
+"valueCaring": "Bienveillant",
+"valueCaringDesc": "Sélectionné pour sa chaleur, sa patience et son expérience.",
+"valueReliable": "Fiable",
+"valueReliableDesc": "Toujours à l'heure — ou nous vous aidons à rebooker instantanément.",
+"valueTrusted": "De confiance",
+"valueTrustedDesc": "Adoré par les familles à travers tout le pays."
   },
   "auth": {
     "login": "Connexion",

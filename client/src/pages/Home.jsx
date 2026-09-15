@@ -96,44 +96,220 @@ function Home() {
         </div>
       </section>
 
-      {/* STATS */}
+      {/* VALUES — image + word + description */}
       <section className="section">
-        <h2 className="section-title">{t('home.stats')}</h2>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {[
-            { num: '500+', label: t('home.parents'), color: COLORS.primary },
-            { num: '200+', label: t('home.babysitters'), color: COLORS.purple },
-            { num: '1000+', label: t('home.bookings'), color: COLORS.teal },
-            { num: '50+', label: t('home.cities'), color: COLORS.amber },
-          ].map((stat, i) => (
-            <div key={i} className="animate-scale" style={{ ...statCardStyle, animationDelay: `${i * 0.1}s` }}>
-              <div style={{ fontSize: '1.8rem', fontWeight: '800', color: stat.color, marginBottom: 4 }}>{stat.num}</div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', fontWeight: '500' }}>{stat.label}</div>
-            </div>
-          ))}
+  <h2 className="section-title">{t('home.values')}</h2>
+  <p className="section-subtitle" style={{ marginBottom: '40px' }}>
+    {t('home.valuesSubtitle')}
+  </p>
+  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+    {[
+      {
+        img: '/values/verified.jpg',
+        icon: '🛡️',
+        title: t('home.valueVerified'),
+        desc: t('home.valueVerifiedDesc'),
+        color: COLORS.primary,
+      },
+      {
+        img: '/values/caring.jpg',
+        icon: '💚',
+        title: t('home.valueCaring'),
+        desc: t('home.valueCaringDesc'),
+        color: COLORS.teal,
+      },
+      {
+        img: '/values/reliable.jpg',
+        icon: '🕐',
+        title: t('home.valueReliable'),
+        desc: t('home.valueReliableDesc'),
+        color: COLORS.purple,
+      },
+      {
+        img: '/values/trusted.jpg',
+        icon: '🏠',
+        title: t('home.valueTrusted'),
+        desc: t('home.valueTrustedDesc'),
+        color: COLORS.amber,
+      },
+    ].map((v, i) => (
+      <div
+        key={i}
+        className="animate-slide-up"
+        style={{
+          animationDelay: `${i * 0.12}s`,
+          flex: '1 1 220px',
+          maxWidth: '260px',
+          background: 'var(--color-surface)',
+          borderRadius: 'var(--radius-lg)',
+          border: '1px solid var(--color-border-light)',
+          boxShadow: 'var(--shadow-sm)',
+          overflow: 'hidden',
+          transition: 'transform 0.25s ease, box-shadow 0.25s ease',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'translateY(-6px)';
+          e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+        }}
+      >
+        {/* Image with emoji fallback */}
+        <div style={{
+          width: '100%',
+          aspectRatio: '1 / 1',
+          background: `linear-gradient(135deg, ${v.color}22, ${v.color}08)`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          position: 'relative',
+        }}>
+          <img
+            src={v.img}
+            alt={v.title}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              display: 'block',
+            }}
+          />
+          {/* Fallback emoji — hidden when the image loads, visible when not */}
+          <span style={{
+            position: 'absolute',
+            fontSize: '3.5rem',
+            zIndex: -1,
+          }}>
+            {v.icon}
+          </span>
         </div>
-      </section>
+
+        {/* Text block */}
+        <div style={{ padding: '20px 18px 24px', textAlign: 'center' }}>
+          <div style={{
+            fontSize: '1.15rem',
+            fontWeight: '800',
+            color: v.color,
+            marginBottom: '8px',
+            letterSpacing: '-0.01em',
+          }}>
+            {v.title}
+          </div>
+          <div style={{
+            fontSize: '0.85rem',
+            color: 'var(--color-text-secondary)',
+            lineHeight: 1.6,
+          }}>
+            {v.desc}
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
+      
 
       {/* TESTIMONIALS */}
-      <section className="section">
-        <h2 className="section-title">What Parents Say</h2>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {[
-            { initials: 'ML', name: 'Maria L.', text: 'CareNest made it so easy to find a trusted babysitter for my daughter. The verification process gave me peace of mind.' },
-            { initials: 'AK', name: 'Ahmed K.', text: 'I found a wonderful babysitter through CareNest who speaks both English and French. My kids love her!' },
-            { initials: 'SB', name: 'Sophie B.', text: 'The booking process was seamless and the chat feature made communication so convenient. Highly recommended!' },
-          ].map((t, i) => (
-            <div key={i} className="animate-slide-up" style={{ ...testimonialCardStyle, animationDelay: `${i * 0.12}s` }}>
-              <div style={{ color: COLORS.amber, fontSize: '0.95rem', marginBottom: 10 }}>{String.fromCodePoint(9733)}{String.fromCodePoint(9733)}{String.fromCodePoint(9733)}{String.fromCodePoint(9733)}{String.fromCodePoint(9733)}</div>
-              <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, margin: '0 0 16px' }}>&ldquo;{t.text}&rdquo;</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: `linear-gradient(135deg, ${COLORS.primary}22, ${COLORS.purple}22)`, color: COLORS.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '0.82rem' }}>{t.initials}</div>
-                <div><strong style={{ fontSize: '0.9rem', color: 'var(--color-text)' }}>{t.name}</strong><br /><span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Parent</span></div>
-              </div>
-            </div>
-          ))}
+      {/* TESTIMONIALS — Quotes on the value of babysitting */}
+<section className="section">
+  <h2 className="section-title">{t('home.testimonialsTitle')}</h2>
+  <p className="section-subtitle" style={{ marginBottom: '40px' }}>
+    {t('home.testimonialsSubtitle')}
+  </p>
+  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+    {[
+      {
+        text: "Babysitting is the quiet profession that makes every other profession possible. Behind nearly every working parent, there is someone they trust with what matters most.",
+        author: "— The SitterSpot team",
+      },
+      {
+        text: "A babysitter isn't a replacement for a parent. They're the extra pair of hands, eyes, and heart that lets a parent breathe.",
+        author: "— A mother of two",
+      },
+      {
+        text: "The best babysitters don't just watch children — they remember their favorite snacks, their fears, their quiet habits. They become part of the family in ways you don't notice until they're gone.",
+        author: "— Written by a former sitter",
+      },
+      {
+        text: "Babysitting taught me more about responsibility, patience, and love than any job I've had since.",
+        author: "— Unknown",
+      },
+    ].map((tst, i) => (
+      <div
+        key={i}
+        className="animate-slide-up"
+        style={{
+          ...testimonialCardStyle,
+          animationDelay: `${i * 0.12}s`,
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          paddingTop: '36px',
+        }}
+      >
+        {/* Big decorative quote mark */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 20,
+            fontSize: '3rem',
+            lineHeight: 1,
+            color: 'var(--color-primary-200)',
+            fontFamily: 'Georgia, serif',
+            opacity: 0.6,
+            userSelect: 'none',
+          }}
+        >
+          &ldquo;
         </div>
-      </section>
+
+        {/* Quote text */}
+        <p
+          style={{
+            color: 'var(--color-text-secondary)',
+            fontSize: '0.95rem',
+            lineHeight: 1.75,
+            margin: '0 0 20px',
+            fontStyle: 'italic',
+            flex: 1,
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          {tst.text}
+        </p>
+
+        {/* Attribution */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            paddingTop: '14px',
+            borderTop: '1px solid var(--color-border-light)',
+          }}
+        >
+          <span
+            style={{
+              fontSize: '0.82rem',
+              fontWeight: '600',
+              color: 'var(--color-primary-600)',
+              letterSpacing: '0.01em',
+            }}
+          >
+            {tst.author}
+          </span>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
     </div>
   );
 }

@@ -30,7 +30,19 @@
     "parents": "Parents",
     "babysitters": "Babysitters",
     "bookings": "Bookings Completed",
-    "cities": "Cities Covered"
+    "cities": "Cities Covered",
+    "values": "Why Families Trust Us",
+    "valuesSubtitle": "Every sitter on SitterSpot is chosen for the same four qualities.",
+"valueVerified": "Verified",
+"valueVerifiedDesc": "Every sitter is background-checked before going live.",
+"valueCaring": "Caring",
+"valueCaringDesc": "Hand-picked for warmth, patience, and real experience.",
+"valueReliable": "Reliable",
+"valueReliableDesc": "On time, every time — or we help you rebook instantly.",
+"valueTrusted": "Trusted",
+"valueTrustedDesc": "Loved by families across the country."
+
+
   },
   "auth": {
     "login": "Login",
