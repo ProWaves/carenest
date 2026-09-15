@@ -40,7 +40,9 @@
 "valueReliable": "Fiable",
 "valueReliableDesc": "Toujours à l'heure — ou nous vous aidons à rebooker instantanément.",
 "valueTrusted": "De confiance",
-"valueTrustedDesc": "Adoré par les familles à travers tout le pays."
+"valueTrustedDesc": "Adoré par les familles à travers tout le pays.",
+"testimonialsTitle": "Pourquoi le babysitting compte",
+  "testimonialsSubtitle": "Réflexions de parents, de babysitters, et de ceux qui comptent sur eux."
   },
   "auth": {
     "login": "Connexion",
