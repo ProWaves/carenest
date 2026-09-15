@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import API from '../api/axios';
 import { useToast } from './Toast';
 
-// Parent reporting babysitter
 const PARENT_REPORT_CATEGORIES = [
   { value: 'unprofessional_behavior', label: 'Unprofessional Behavior', icon: '👎' },
   { value: 'no_show', label: 'Did Not Show Up', icon: '🚫' },
@@ -16,7 +15,6 @@ const PARENT_REPORT_CATEGORIES = [
   { value: 'other', label: 'Other Issue', icon: '📝' },
 ];
 
-// Babysitter reporting parent
 const BABYSITTER_REPORT_CATEGORIES = [
   { value: 'no_show', label: 'Did Not Show Up', icon: '🚫' },
   { value: 'last_minute_cancellation', label: 'Last Minute Cancellation', icon: '❌' },
@@ -28,30 +26,39 @@ const BABYSITTER_REPORT_CATEGORIES = [
   { value: 'other', label: 'Other Issue', icon: '📝' },
 ];
 
-function ReportModal({ 
-  isOpen, 
-  onClose, 
-  reportedUserId, 
-  reportedName, 
+function ReportModal({
+  isOpen,
+  onClose,
+  reportedUserId,
+  reportedName,
   reportedRole,
   bookingId,
-  reporterRole, // 'parent' or 'babysitter'
-  onSuccess 
+  reporterRole,
+  defaultCategory,
+  onSuccess,
 }) {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(false);
-  
-  const categories = reporterRole === 'babysitter' 
-    ? BABYSITTER_REPORT_CATEGORIES 
+
+  const categories = reporterRole === 'babysitter'
+    ? BABYSITTER_REPORT_CATEGORIES
     : PARENT_REPORT_CATEGORIES;
 
   const [form, setForm] = useState({
-    category: '',
+    category: defaultCategory || '',
     reason: '',
     description: '',
     refund_requested: false,
     refund_amount: '',
   });
+
+  // Re-sync when `defaultCategory` changes and the modal is reopened
+  React.useEffect(() => {
+    if (isOpen) {
+      setForm(prev => ({ ...prev, category: defaultCategory || prev.category }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, defaultCategory]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -71,7 +78,7 @@ function ReportModal({
         refund_requested: form.refund_requested,
         refund_amount: form.refund_requested ? parseFloat(form.refund_amount) : null,
       });
-      
+
       addToast('Report submitted successfully! Admin will review it within 24 hours.', 'success');
       onSuccess?.();
       onClose();
@@ -88,7 +95,6 @@ function ReportModal({
   return (
     <div className="report-modal-overlay" onClick={onClose}>
       <div className="report-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
         <div className="report-modal-header">
           <div className="report-modal-title">
             <span className="report-modal-icon">🚨</span>
@@ -97,7 +103,6 @@ function ReportModal({
           <button className="report-modal-close" onClick={onClose}>×</button>
         </div>
 
-        {/* Body */}
         <form onSubmit={handleSubmit} className="report-modal-body">
           {bookingId && (
             <div className="report-booking-info">
@@ -186,7 +191,6 @@ function ReportModal({
             </p>
           </div>
 
-          {/* Footer */}
           <div className="report-modal-footer">
             <button type="button" className="report-btn report-btn-secondary" onClick={onClose}>
               Cancel

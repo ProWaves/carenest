@@ -1,3 +1,4 @@
+// server/src/routes/bookings.js
 const express = require('express');
 const db = require('../config/database');
 const { authenticate, authorize } = require('../middleware/auth');
@@ -70,9 +71,14 @@ router.get('/', authenticate, async (req, res) => {
 // POST /api/bookings - Create booking with slot locking
 router.post('/', authenticate, authorize('parent'), async (req, res) => {
   try {
-    const { babysitter_id, child_id, start_date, end_date, start_time, end_time, notes, slot_ids } = req.body;
+    const {
+      babysitter_id, child_id,
+      start_date, end_date, start_time, end_time,
+      notes, slot_ids,
+      payment_method,          // 👈 NEW
+    } = req.body;
 
-    // ✅ NEW: validate date/time presence before doing anything else
+    // ✅ Validate date/time presence before doing anything else
     if (!start_date || !end_date || !start_time || !end_time) {
       return res.status(400).json({
         error: 'Missing required date/time fields.',
@@ -80,7 +86,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
       });
     }
 
-    // ✅ NEW: validate parent is not suspended
+    // ✅ Validate parent is not suspended
     const parentCheck = await db.query(
       'SELECT suspended_at FROM users WHERE id = $1',
       [req.user.id]
@@ -91,7 +97,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 
     // Check if babysitter is suspended
     const sitterCheck = await db.query(
-      `SELECT u.suspended_at, bp.status, bp.hourly_rate
+      `SELECT u.suspended_at, bp.status, bp.hourly_rate, bp.payment_preference
        FROM users u 
        JOIN babysitter_profiles bp ON bp.user_id = u.id 
        WHERE u.id = $1`,
@@ -105,6 +111,23 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
     }
     if (sitterCheck.rows[0].status !== 'approved') {
       return res.status(403).json({ error: 'Babysitter profile not approved.' });
+    }
+
+    // ── Resolve and validate payment method ─────────────────────
+    const sitterPref = sitterCheck.rows[0].payment_preference || 'both';
+    const chosenMethod = (payment_method || 'cash').toLowerCase();
+
+    if (!['cash', 'online'].includes(chosenMethod)) {
+      return res.status(400).json({
+        error: 'Invalid payment_method. Must be "cash" or "online".'
+      });
+    }
+
+    if (sitterPref !== 'both' && sitterPref !== chosenMethod) {
+      return res.status(400).json({
+        error: `This babysitter only accepts ${sitterPref} payments.`,
+        babysitter_payment_preference: sitterPref,
+      });
     }
 
     // Get hourly rate
@@ -125,6 +148,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
     const totalAmount = totalHours * hourlyRate;
 
     console.log(`💰 Booking calculation: ${totalHours}h × $${hourlyRate} = $${totalAmount}`);
+    console.log(`💳 Payment method: ${chosenMethod} (sitter pref: ${sitterPref})`);
 
     // Begin transaction
     const client = await db.pool.connect();
@@ -132,11 +156,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
     try {
       await client.query('BEGIN');
 
-      // ============================================================
-      // ✅ NEW: reject if this babysitter is already booked for an
-      //         overlapping window. Uses the (start_date, end_date,
-      //         start_time, end_time) tuple to detect overlap.
-      // ============================================================
+      // ✅ Reject if this babysitter is already booked for an overlapping window
       const conflict = await client.query(
         `SELECT id FROM bookings
          WHERE babysitter_id = $1
@@ -163,12 +183,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
         });
       }
 
-      // ============================================================
-      // ✅ NEW: if slot_ids were provided, verify they (a) belong to
-      //         this babysitter, (b) are published, (c) are not booked.
-      //         Lock the rows with FOR UPDATE so two concurrent
-      //         bookings can't both claim the same slot.
-      // ============================================================
+      // ✅ If slot_ids were provided, verify and lock them
       let validSlotIds = [];
       if (slot_ids && Array.isArray(slot_ids) && slot_ids.length > 0) {
         const slotsRes = await client.query(
@@ -186,8 +201,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 
         validSlotIds = slotsRes.rows.map(r => r.id);
 
-        // If the parent requested slots we can't honor, fail the whole
-        // booking rather than silently dropping some of them.
         if (validSlotIds.length !== slot_ids.length) {
           await client.query('ROLLBACK');
           return res.status(409).json({
@@ -198,18 +211,27 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
         }
       }
 
-      // Create booking
+      // Create booking (with payment_method)
       const result = await client.query(
-        `INSERT INTO bookings (parent_id, babysitter_id, child_id, start_date, end_date, start_time, end_time, total_hours, total_amount, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO bookings (
+            parent_id, babysitter_id, child_id,
+            start_date, end_date, start_time, end_time,
+            total_hours, total_amount, notes,
+            payment_method
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
-        [req.user.id, babysitter_id, child_id || null, start_date, end_date, start_time, end_time, totalHours, totalAmount, notes]
+        [
+          req.user.id, babysitter_id, child_id || null,
+          start_date, end_date, start_time, end_time,
+          totalHours, totalAmount, notes,
+          chosenMethod,
+        ]
       );
 
       const booking = result.rows[0];
 
-      // Mark the verified slots as booked. Because we locked them above
-      // with FOR UPDATE, this can't race with another booking.
+      // Mark the verified slots as booked
       if (validSlotIds.length > 0) {
         await client.query(
           `UPDATE babysitter_availability 

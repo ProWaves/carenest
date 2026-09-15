@@ -22,26 +22,27 @@ function BabysitterDashboard() {
   const [loading, setLoading] = useState(true);
 
   // Profile Form State
-  const [editForm, setEditForm] = useState({ 
-    bio: '', 
-    experience_years: '', 
-    hourly_rate: '' 
+  const [editForm, setEditForm] = useState({
+    bio: '',
+    experience_years: '',
+    hourly_rate: '',
+    payment_preference: 'both',
   });
   const [skills, setSkills] = useState([]);
   const [newSkill, setNewSkill] = useState('');
   const [availability, setAvailability] = useState([]);
-  const [emergency, setEmergency] = useState({ 
-    emergency_contact_name: '', 
-    emergency_contact_phone: '' 
+  const [emergency, setEmergency] = useState({
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
   });
   const [gallery, setGallery] = useState([]);
   const [documents, setDocuments] = useState([]);
-  const [earnings, setEarnings] = useState({ 
-    total: 0, 
-    average: 0, 
-    monthly: [], 
-    completedCount: 0, 
-    statusBreakdown: {} 
+  const [earnings, setEarnings] = useState({
+    total: 0,
+    average: 0,
+    monthly: [],
+    completedCount: 0,
+    statusBreakdown: {},
   });
   const [receivedReviews, setReceivedReviews] = useState([]);
 
@@ -67,14 +68,18 @@ function BabysitterDashboard() {
   const [reviewData, setReviewData] = useState({ rating: 5, comment: '' });
   const [bookingToReview, setBookingToReview] = useState(null);
 
+  // ── Cash confirmation modal state ────────────────────────────
+  const [confirmCash, setConfirmCash] = useState({ open: false, booking: null });
+
   // Report state
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedBookingForReport, setSelectedBookingForReport] = useState(null);
+  const [reportDefaultCategory, setReportDefaultCategory] = useState('other');
 
-  // ✅ Drill-down modal state
+  // Drill-down modal state
   const [detailModal, setDetailModal] = useState({ open: false, type: null, statusFilter: null });
 
-  // ✅ NEW: Payouts (bank account) state
+  // Payouts
   const [bankAccounts, setBankAccounts] = useState([]);
   const [payoutForm, setPayoutForm] = useState({
     bank_name: '',
@@ -93,25 +98,26 @@ function BabysitterDashboard() {
     try {
       setLoading(true);
       console.log('🔄 Loading dashboard data...');
-      
+
       // Load profile
       try {
         const profileRes = await API.get('/babysitters/profile/me');
         console.log('✅ Profile loaded:', profileRes.data);
         setProfile(profileRes.data);
         setDocuments(profileRes.data.documents || []);
-        
+
         setEditForm({
           bio: profileRes.data.bio || '',
           experience_years: profileRes.data.experience_years || '',
           hourly_rate: profileRes.data.hourly_rate || '',
+          payment_preference: profileRes.data.payment_preference || 'both',
         });
         setSkills(profileRes.data.skills || []);
-        
+
         if (profileRes.data.availability) {
           setAvailability(profileRes.data.availability);
         }
-        
+
         setEmergency({
           emergency_contact_name: profileRes.data.emergency_contact_name || '',
           emergency_contact_phone: profileRes.data.emergency_contact_phone || '',
@@ -149,7 +155,7 @@ function BabysitterDashboard() {
         console.error('❌ Slots load error:', slotError);
       }
 
-      // ✅ NEW: Load bank accounts
+      // Load bank accounts
       try {
         const bankRes = await API.get('/payments/bank-accounts');
         setBankAccounts(bankRes.data || []);
@@ -168,7 +174,6 @@ function BabysitterDashboard() {
           console.error('❌ Gallery load error:', galleryError);
         }
       }
-
     } catch (error) {
       console.error('❌ Load all data error:', error);
       addToast('Failed to load some data. Please refresh.', 'error');
@@ -193,28 +198,73 @@ function BabysitterDashboard() {
       const average = completed.length > 0 ? total / completed.length : 0;
       const months = {};
       const breakdown = {};
-      
+
       completed.forEach((b) => {
         const m = new Date(b.created_at).toLocaleString('default', { month: 'short', year: 'numeric' });
         months[m] = (months[m] || 0) + parseFloat(b.total_amount || 0);
       });
-      
-      bookingsData.forEach((b) => { 
-        breakdown[b.status] = (breakdown[b.status] || 0) + 1; 
+
+      bookingsData.forEach((b) => {
+        breakdown[b.status] = (breakdown[b.status] || 0) + 1;
       });
-      
-      setEarnings({ 
-        total, 
-        average, 
-        monthly: Object.entries(months), 
-        completedCount: completed.length, 
-        statusBreakdown: breakdown 
+
+      setEarnings({
+        total,
+        average,
+        monthly: Object.entries(months),
+        completedCount: completed.length,
+        statusBreakdown: breakdown,
       });
     }
   };
 
   // ============================================
-  // ✅ NEW: Payouts handlers
+  // CASH CONFIRMATION FLOW
+  // ============================================
+  const promptCompleteBooking = (booking) => {
+    const method = (booking.payment_method || 'cash').toLowerCase();
+    if (method === 'cash') {
+      setConfirmCash({ open: true, booking });
+    } else {
+      // Online — just complete
+      handleBookingStatus(booking.id, 'completed');
+    }
+  };
+
+  const markBookingPaid = async (bookingId) => {
+    try {
+      await API.put(`/payments/bookings/${bookingId}/mark-paid`, { note: 'Cash received' });
+      addToast('✅ Wallet credited!', 'success');
+    } catch (err) {
+      addToast(err.response?.data?.error || 'Failed to credit wallet', 'error');
+    }
+  };
+
+  const handleCashYes = async (booking) => {
+    setConfirmCash({ open: false, booking: null });
+    try {
+      await handleBookingStatus(booking.id, 'completed');
+      await markBookingPaid(booking.id);
+    } catch (e) {
+      // handleBookingStatus already toasts on failure
+    }
+    loadAllData();
+  };
+
+  const handleCashNo = async (booking) => {
+    setConfirmCash({ open: false, booking: null });
+    try {
+      await handleBookingStatus(booking.id, 'completed');
+    } catch (e) {
+      return;
+    }
+    setSelectedBookingForReport(booking);
+    setReportDefaultCategory('payment_issue');
+    setShowReportModal(true);
+  };
+
+  // ============================================
+  // PAYOUTS
   // ============================================
   const loadBankAccounts = async () => {
     try {
@@ -323,11 +373,11 @@ function BabysitterDashboard() {
   ];
 
   // ============================================
-  // DELETE BOOKING FOR BABYSITTER
+  // DELETE BOOKING
   // ============================================
   const deleteBooking = async (id) => {
     if (!window.confirm('Are you sure you want to permanently delete this booking? This action cannot be undone.')) return;
-    
+
     try {
       await API.delete(`/bookings/${id}`);
       setBookings(bookings.filter((b) => b.id !== id));
@@ -369,19 +419,19 @@ function BabysitterDashboard() {
       if (exists) {
         return prev.filter((a) => a.day_of_week !== day);
       } else {
-        return [...prev, { 
-          day_of_week: day, 
-          start_time: '09:00', 
+        return [...prev, {
+          day_of_week: day,
+          start_time: '09:00',
           end_time: '17:00',
           is_available: true,
-          is_published: false
+          is_published: false,
         }];
       }
     });
   };
 
   const updateSlot = (day, field, value) => {
-    setAvailability((prev) => 
+    setAvailability((prev) =>
       prev.map((a) => (a.day_of_week === day ? { ...a, [field]: value } : a))
     );
   };
@@ -389,9 +439,9 @@ function BabysitterDashboard() {
   const saveAvailability = async () => {
     try {
       setSavingAvailability(true);
-      
+
       const availableSlots = availability.filter(a => a.is_available !== false);
-      
+
       if (availableSlots.length === 0) {
         addToast('Please select at least one day and time.', 'error');
         setSavingAvailability(false);
@@ -414,7 +464,7 @@ function BabysitterDashboard() {
       const dataToSend = availableSlots.map(({ day_of_week, start_time, end_time }) => ({
         day_of_week,
         start_time,
-        end_time
+        end_time,
       }));
 
       await API.post('/babysitters/availability', { availability: dataToSend });
@@ -451,15 +501,15 @@ function BabysitterDashboard() {
     setPublishing(true);
     try {
       const availableSlots = availability.filter(a => a.is_available);
-      
+
       const res = await API.post('/babysitters/availability/publish', {
-        availability: availableSlots.map(slot => ({ id: slot.id }))
+        availability: availableSlots.map(slot => ({ id: slot.id })),
       });
 
       setPublishStatus({
         success: true,
         message: res.data.message,
-        count: res.data.published
+        count: res.data.published,
       });
 
       addToast(`✅ ${res.data.message}`, 'success');
@@ -467,16 +517,16 @@ function BabysitterDashboard() {
     } catch (error) {
       console.error('Publish error:', error);
       const errorMsg = error.response?.data?.error || 'Failed to publish availability.';
-      
+
       if (error.response?.data?.suspended) {
         addToast('❌ Your account is suspended. Please contact support.', 'error');
       } else {
         addToast(errorMsg, 'error');
       }
-      
+
       setPublishStatus({
         success: false,
-        message: errorMsg
+        message: errorMsg,
       });
     } finally {
       setPublishing(false);
@@ -484,11 +534,11 @@ function BabysitterDashboard() {
   };
 
   // ============================================
-  // SLOT MANAGEMENT FUNCTIONS
+  // SLOT MANAGEMENT
   // ============================================
   const handleDeleteSlot = async (slotId) => {
     if (!window.confirm('Are you sure you want to delete this availability slot?')) return;
-    
+
     try {
       await API.delete(`/babysitters/availability/slots/${slotId}`);
       addToast('Slot deleted successfully!', 'success');
@@ -502,11 +552,11 @@ function BabysitterDashboard() {
   const handleEditSlot = async (slotId) => {
     const slot = slots.find(s => s.id === slotId);
     if (!slot) return;
-    
+
     setEditingSlot(slot);
-    setEditSlotData({ 
-      start_time: slot.start_time, 
-      end_time: slot.end_time 
+    setEditSlotData({
+      start_time: slot.start_time,
+      end_time: slot.end_time,
     });
     setShowEditModal(true);
   };
@@ -516,7 +566,7 @@ function BabysitterDashboard() {
       await API.put(`/babysitters/availability/slots/${editingSlot.id}`, {
         start_time: editSlotData.start_time,
         end_time: editSlotData.end_time,
-        is_available: true
+        is_available: true,
       });
       addToast('Slot updated successfully!', 'success');
       setShowEditModal(false);
@@ -569,12 +619,12 @@ function BabysitterDashboard() {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      
+
       setUploading(true);
       const formData = new FormData();
       formData.append('document', file);
       formData.append('document_type', type);
-      
+
       try {
         await API.post('/babysitters/documents', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -592,7 +642,7 @@ function BabysitterDashboard() {
 
   const deleteDocument = async (docId) => {
     if (!window.confirm('Are you sure you want to delete this document?')) return;
-    
+
     try {
       await API.delete(`/babysitters/documents/${docId}`);
       addToast('Document deleted!', 'success');
@@ -609,11 +659,11 @@ function BabysitterDashboard() {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      
+
       setUploading(true);
       const formData = new FormData();
       formData.append('document', file);
-      
+
       try {
         await API.put(`/babysitters/documents/${docId}`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -636,9 +686,10 @@ function BabysitterDashboard() {
     try {
       await API.put(`/bookings/${id}/status`, { status });
       addToast(`Booking ${status}!`, 'success');
-      loadAllData();
+      await loadAllData();
     } catch (err) {
       addToast(err.response?.data?.error || 'Error updating booking', 'error');
+      throw err;
     }
   };
 
@@ -649,8 +700,8 @@ function BabysitterDashboard() {
     }
 
     try {
-      await API.put(`/bookings/${bookingToCancel}/cancel`, { 
-        reason: cancelReason 
+      await API.put(`/bookings/${bookingToCancel}/cancel`, {
+        reason: cancelReason,
       });
       addToast('Booking cancelled!', 'success');
       setShowCancelModal(false);
@@ -668,7 +719,7 @@ function BabysitterDashboard() {
         booking_id: bookingToReview,
         parent_id: bookings.find(b => b.id === bookingToReview)?.parent_id,
         rating: reviewData.rating,
-        comment: reviewData.comment
+        comment: reviewData.comment,
       });
       addToast('Review submitted!', 'success');
       setShowReviewModal(false);
@@ -695,7 +746,7 @@ function BabysitterDashboard() {
   };
 
   // ============================================
-  // GALLERY MANAGEMENT
+  // GALLERY
   // ============================================
   const uploadGalleryImage = () => {
     const input = document.createElement('input');
@@ -704,10 +755,10 @@ function BabysitterDashboard() {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      
+
       const formData = new FormData();
       formData.append('image', file);
-      
+
       try {
         const res = await API.post('/babysitters/gallery', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
@@ -724,7 +775,7 @@ function BabysitterDashboard() {
 
   const deleteGalleryImage = async (imageId) => {
     if (!window.confirm('Are you sure you want to delete this image?')) return;
-    
+
     try {
       await API.delete(`/babysitters/gallery/${imageId}`);
       setGallery((prev) => prev.filter((img) => img.id !== imageId));
@@ -737,9 +788,9 @@ function BabysitterDashboard() {
   const setPrimaryImage = async (imageId) => {
     try {
       await API.put(`/babysitters/gallery/${imageId}/primary`);
-      setGallery((prev) => prev.map((img) => ({ 
-        ...img, 
-        is_primary: img.id === imageId 
+      setGallery((prev) => prev.map((img) => ({
+        ...img,
+        is_primary: img.id === imageId,
       })));
       addToast('Primary image updated!', 'success');
     } catch (err) {
@@ -753,12 +804,12 @@ function BabysitterDashboard() {
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   const statusClass = (s) => {
-    const map = { 
-      pending: 'status-pending', 
-      confirmed: 'status-confirmed', 
-      in_progress: 'status-progress', 
-      completed: 'status-completed', 
-      cancelled: 'status-cancelled' 
+    const map = {
+      pending: 'status-pending',
+      confirmed: 'status-confirmed',
+      in_progress: 'status-progress',
+      completed: 'status-completed',
+      cancelled: 'status-cancelled',
     };
     return map[s] || '';
   };
@@ -769,7 +820,7 @@ function BabysitterDashboard() {
       confirmed: '#3b82f6',
       in_progress: '#8b5cf6',
       completed: '#10b981',
-      cancelled: '#ef4444'
+      cancelled: '#ef4444',
     };
     return colors[status] || '#6b7280';
   };
@@ -792,7 +843,9 @@ function BabysitterDashboard() {
             const isPending = status === 'pending';
             const isConfirmed = status === 'confirmed';
             const isInProgress = status === 'in_progress' || status === 'inprogress';
-            
+            const payMethod = (b.payment_method || 'cash').toLowerCase();
+            const payStatus = (b.payment_status || 'unpaid').toLowerCase();
+
             return (
               <div key={b.id} className="booking-item">
                 <div className="booking-main">
@@ -811,6 +864,27 @@ function BabysitterDashboard() {
                   <div className="booking-amount">
                     ${b.total_amount ? parseFloat(b.total_amount).toFixed(2) : '0.00'}
                   </div>
+
+                  {/* Payment badges */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: '0.7rem', fontWeight: '600', padding: '3px 8px', borderRadius: '10px',
+                      background: payMethod === 'cash' ? '#FEF3C7' : '#DBEAFE',
+                      color: payMethod === 'cash' ? '#92400E' : '#1E40AF',
+                    }}>
+                      {payMethod === 'cash' ? '💵 Cash' : '💳 Online'}
+                    </span>
+                    {isCompleted && (
+                      <span style={{
+                        fontSize: '0.7rem', fontWeight: '600', padding: '3px 8px', borderRadius: '10px',
+                        background: payStatus === 'paid' ? '#D1FAE5' : '#FEE2E2',
+                        color: payStatus === 'paid' ? '#065F46' : '#991B1B',
+                      }}>
+                        {payStatus === 'paid' ? '✓ Paid' : '⚠ Unpaid'}
+                      </span>
+                    )}
+                  </div>
+
                   <span className={`booking-status ${statusClass(b.status)}`}>
                     {b.status || 'Unknown'}
                   </span>
@@ -820,7 +894,7 @@ function BabysitterDashboard() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="booking-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
                   {isPending && (
                     <>
@@ -832,7 +906,7 @@ function BabysitterDashboard() {
                       </button>
                     </>
                   )}
-                  
+
                   {isConfirmed && (
                     <>
                       <button onClick={() => handleBookingStatus(b.id, 'in_progress')} className="btn btn-sm btn-primary">
@@ -843,10 +917,10 @@ function BabysitterDashboard() {
                       </button>
                     </>
                   )}
-                  
+
                   {isInProgress && (
                     <>
-                      <button onClick={() => handleBookingStatus(b.id, 'completed')} className="btn btn-sm btn-success">
+                      <button onClick={() => promptCompleteBooking(b)} className="btn btn-sm btn-success">
                         ✅ Complete
                       </button>
                       <button onClick={() => { setBookingToCancel(b.id); setShowCancelModal(true); }} className="btn btn-sm btn-outline-danger">
@@ -854,27 +928,32 @@ function BabysitterDashboard() {
                       </button>
                     </>
                   )}
-                  
+
                   {isCompleted && (
                     <>
                       <button onClick={() => { setBookingToReview(b.id); setShowReviewModal(true); }} className="btn btn-sm btn-outline">
                         ⭐ Review Parent
                       </button>
+                      {payMethod === 'cash' && payStatus !== 'paid' && (
+                        <button onClick={() => markBookingPaid(b.id)} className="btn btn-sm btn-success">
+                          💵 Mark Received
+                        </button>
+                      )}
                       <button onClick={() => deleteBooking(b.id)} className="btn btn-sm btn-outline-danger" title="Permanently delete this booking">
                         🗑️ Delete
                       </button>
-                      <button onClick={() => { setSelectedBookingForReport(b); setShowReportModal(true); }} className="btn btn-sm btn-outline-danger">
+                      <button onClick={() => { setSelectedBookingForReport(b); setReportDefaultCategory('other'); setShowReportModal(true); }} className="btn btn-sm btn-outline-danger">
                         🚨 Report Parent
                       </button>
                     </>
                   )}
-                  
+
                   {isCancelled && (
                     <>
                       <button onClick={() => deleteBooking(b.id)} className="btn btn-sm btn-outline-danger" title="Permanently delete this booking">
                         🗑️ Delete
                       </button>
-                      <button onClick={() => { setSelectedBookingForReport(b); setShowReportModal(true); }} className="btn btn-sm btn-outline-danger">
+                      <button onClick={() => { setSelectedBookingForReport(b); setReportDefaultCategory('other'); setShowReportModal(true); }} className="btn btn-sm btn-outline-danger">
                         🚨 Report Parent
                       </button>
                     </>
@@ -935,7 +1014,7 @@ function BabysitterDashboard() {
                     </div>
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                       {new Date(review.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric', month: 'short', day: 'numeric'
+                        year: 'numeric', month: 'short', day: 'numeric',
                       })}
                     </div>
                   </div>
@@ -962,37 +1041,77 @@ function BabysitterDashboard() {
       <form onSubmit={updateProfile} className="profile-form">
         <div className="form-group">
           <label>Bio</label>
-          <textarea 
-            name="bio" 
-            value={editForm.bio} 
-            onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })} 
-            rows={4} 
-            placeholder="Tell parents about yourself..." 
+          <textarea
+            name="bio"
+            value={editForm.bio}
+            onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
+            rows={4}
+            placeholder="Tell parents about yourself..."
           />
         </div>
         <div className="form-row">
           <div className="form-group">
             <label>Experience (years)</label>
-            <input 
-              type="number" 
-              name="experience_years" 
-              value={editForm.experience_years} 
-              onChange={(e) => setEditForm({ ...editForm, experience_years: e.target.value })} 
-              min="0" 
+            <input
+              type="number"
+              name="experience_years"
+              value={editForm.experience_years}
+              onChange={(e) => setEditForm({ ...editForm, experience_years: e.target.value })}
+              min="0"
             />
           </div>
           <div className="form-group">
             <label>Hourly Rate ($)</label>
-            <input 
-              type="number" 
-              step="0.01" 
-              name="hourly_rate" 
-              value={editForm.hourly_rate} 
-              onChange={(e) => setEditForm({ ...editForm, hourly_rate: e.target.value })} 
-              min="0" 
+            <input
+              type="number"
+              step="0.01"
+              name="hourly_rate"
+              value={editForm.hourly_rate}
+              onChange={(e) => setEditForm({ ...editForm, hourly_rate: e.target.value })}
+              min="0"
             />
           </div>
         </div>
+
+        {/* ── Payment Preference ───────────────────────────── */}
+        <div className="form-group">
+          <label>💳 Payment Preference</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+            {[
+              { value: 'cash', label: '💵 Cash', desc: 'In-person only' },
+              { value: 'online', label: '💳 Online', desc: 'Platform only' },
+              { value: 'both', label: '🔀 Both', desc: 'Accept either' },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setEditForm({ ...editForm, payment_preference: opt.value })}
+                style={{
+                  padding: '12px',
+                  borderRadius: 'var(--radius)',
+                  border: editForm.payment_preference === opt.value
+                    ? '2px solid var(--color-primary-500)'
+                    : '1.5px solid var(--color-border)',
+                  background: editForm.payment_preference === opt.value
+                    ? 'var(--color-primary-50)'
+                    : 'var(--color-surface)',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{opt.label}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                  {opt.desc}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+            Parents will only see payment methods you accept when booking.
+          </div>
+        </div>
+
         <div className="form-group">
           <label>Skills</label>
           <div className="skills-tags" style={{ marginBottom: 8 }}>
@@ -1003,12 +1122,12 @@ function BabysitterDashboard() {
             ))}
           </div>
           <div className="skill-input-group">
-            <input 
-              type="text" 
-              value={newSkill} 
-              onChange={(e) => setNewSkill(e.target.value)} 
-              placeholder="e.g., First Aid, Infant Care..." 
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSkill())} 
+            <input
+              type="text"
+              value={newSkill}
+              onChange={(e) => setNewSkill(e.target.value)}
+              placeholder="e.g., First Aid, Infant Care..."
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSkill())}
             />
             <button type="button" onClick={addSkill} className="btn btn-sm btn-outline">Add</button>
           </div>
@@ -1026,7 +1145,7 @@ function BabysitterDashboard() {
       <div className="availability-setup">
         {profile?.status !== 'approved' && (
           <div className="alert alert-warning" style={{ marginBottom: '16px' }}>
-            ⚠️ Your profile is <strong>{profile?.status}</strong>. You can set up your availability, 
+            ⚠️ Your profile is <strong>{profile?.status}</strong>. You can set up your availability,
             but it will not be visible to parents until your profile is approved by admin.
           </div>
         )}
@@ -1075,7 +1194,7 @@ function BabysitterDashboard() {
           {dayNames.map((day, i) => {
             const slot = availability.find((a) => a.day_of_week === i);
             const isActive = !!slot && slot.is_available !== false;
-            
+
             return (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', gap: '16px',
@@ -1085,18 +1204,33 @@ function BabysitterDashboard() {
                 marginBottom: '4px', flexWrap: 'wrap',
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 500, minWidth: '120px', cursor: 'pointer', fontSize: '0.88rem' }}>
-                  <input type="checkbox" checked={isActive} onChange={() => toggleDay(i)} style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-500)' }} />
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={() => toggleDay(i)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary-500)' }}
+                  />
                   {day}
                 </label>
-                
+
                 {isActive && (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <input type="time" value={slot?.start_time || '09:00'} onChange={(e) => updateSlot(i, 'start_time', e.target.value)} style={{ padding: '6px 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', background: 'var(--color-surface)', color: 'var(--color-text)', outline: 'none' }} />
+                      <input
+                        type="time"
+                        value={slot?.start_time || '09:00'}
+                        onChange={(e) => updateSlot(i, 'start_time', e.target.value)}
+                        style={{ padding: '6px 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', background: 'var(--color-surface)', color: 'var(--color-text)', outline: 'none' }}
+                      />
                       <span style={{ color: 'var(--color-text-secondary)' }}>to</span>
-                      <input type="time" value={slot?.end_time || '17:00'} onChange={(e) => updateSlot(i, 'end_time', e.target.value)} style={{ padding: '6px 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', background: 'var(--color-surface)', color: 'var(--color-text)', outline: 'none' }} />
+                      <input
+                        type="time"
+                        value={slot?.end_time || '17:00'}
+                        onChange={(e) => updateSlot(i, 'end_time', e.target.value)}
+                        style={{ padding: '6px 10px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', background: 'var(--color-surface)', color: 'var(--color-text)', outline: 'none' }}
+                      />
                     </div>
-                    
+
                     {profile?.status === 'approved' && !profile?.suspended_at && slot?.is_published && (
                       <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: '600', marginLeft: '8px' }}>
                         ✅ Published
@@ -1108,7 +1242,7 @@ function BabysitterDashboard() {
             );
           })}
         </div>
-        
+
         <button onClick={saveAvailability} className="btn btn-primary" style={{ marginTop: 8 }} disabled={savingAvailability}>
           {savingAvailability ? 'Saving...' : '💾 Save Availability'}
         </button>
@@ -1155,7 +1289,7 @@ function BabysitterDashboard() {
                 const dayName = dayNames[slot.day_of_week] || slot.day_of_week;
                 const isBooked = slot.is_booked;
                 const isPublished = slot.is_published;
-                
+
                 return (
                   <tr key={slot.id} style={{ background: isBooked ? 'rgba(239, 68, 68, 0.05)' : isPublished ? 'rgba(16, 185, 129, 0.05)' : 'transparent' }}>
                     <td>
@@ -1265,7 +1399,7 @@ function BabysitterDashboard() {
               background: 'var(--color-surface)',
               borderRadius: 'var(--radius)',
               border: '1px solid var(--color-border-light)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px'
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px',
             }}>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -1320,11 +1454,19 @@ function BabysitterDashboard() {
       <form onSubmit={saveEmergency} className="emergency-form">
         <div className="form-group">
           <label>Emergency Contact Name</label>
-          <input type="text" value={emergency.emergency_contact_name} onChange={(e) => setEmergency({ ...emergency, emergency_contact_name: e.target.value })} placeholder="e.g., John Doe" />
+          <input
+            type="text"
+            value={emergency.emergency_contact_name}
+            onChange={(e) => setEmergency({ ...emergency, emergency_contact_name: e.target.value })}
+            placeholder="e.g., John Doe"
+          />
         </div>
         <div className="form-group">
           <label>Emergency Contact Phone</label>
-          <PhoneInput value={emergency.emergency_contact_phone} onChange={(val) => setEmergency({ ...emergency, emergency_contact_phone: val })} />
+          <PhoneInput
+            value={emergency.emergency_contact_phone}
+            onChange={(val) => setEmergency({ ...emergency, emergency_contact_phone: val })}
+          />
         </div>
         <button type="submit" className="btn btn-primary">Save Emergency Contact</button>
       </form>
@@ -1445,7 +1587,7 @@ function BabysitterDashboard() {
   );
 
   // ============================================
-  // ✅ NEW: RENDER PAYOUTS TAB
+  // RENDER PAYOUTS TAB
   // ============================================
   const renderPayoutsTab = () => (
     <div className="dash-content">
@@ -1610,7 +1752,7 @@ function BabysitterDashboard() {
     { id: 'emergency', label: '🚨 Emergency' },
     { id: 'gallery', label: '🖼️ Gallery' },
     { id: 'earnings', label: '💰 Earnings' },
-    { id: 'payouts', label: '💳 Payouts' },   // ✅ NEW
+    { id: 'payouts', label: '💳 Payouts' },
   ];
 
   return (
@@ -1646,7 +1788,7 @@ function BabysitterDashboard() {
       {activeTab === 'emergency' && renderEmergencyTab()}
       {activeTab === 'gallery' && renderGalleryTab()}
       {activeTab === 'earnings' && renderEarningsTab()}
-      {activeTab === 'payouts' && renderPayoutsTab()}   {/* ✅ NEW */}
+      {activeTab === 'payouts' && renderPayoutsTab()}
 
       {/* Cancel Booking Modal */}
       {showCancelModal && (
@@ -1659,7 +1801,13 @@ function BabysitterDashboard() {
             <div className="modal-body">
               <div className="form-group">
                 <label>Cancellation Reason <span style={{ color: '#ef4444' }}>*</span></label>
-                <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Please explain why you're cancelling this booking..." rows={4} required />
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Please explain why you're cancelling this booking..."
+                  rows={4}
+                  required
+                />
               </div>
             </div>
             <div className="modal-footer">
@@ -1683,13 +1831,24 @@ function BabysitterDashboard() {
                 <label>Rating</label>
                 <div className="rating-select">
                   {[1, 2, 3, 4, 5].map((r) => (
-                    <button key={r} className={`rating-star ${r <= reviewData.rating ? 'active' : ''}`} onClick={() => setReviewData({ ...reviewData, rating: r })}>⭐</button>
+                    <button
+                      key={r}
+                      className={`rating-star ${r <= reviewData.rating ? 'active' : ''}`}
+                      onClick={() => setReviewData({ ...reviewData, rating: r })}
+                    >
+                      ⭐
+                    </button>
                   ))}
                 </div>
               </div>
               <div className="form-group">
                 <label>Comment</label>
-                <textarea value={reviewData.comment} onChange={(e) => setReviewData({ ...reviewData, comment: e.target.value })} placeholder="Share your experience..." rows={4} />
+                <textarea
+                  value={reviewData.comment}
+                  onChange={(e) => setReviewData({ ...reviewData, comment: e.target.value })}
+                  placeholder="Share your experience..."
+                  rows={4}
+                />
               </div>
             </div>
             <div className="modal-footer">
@@ -1700,7 +1859,40 @@ function BabysitterDashboard() {
         </div>
       )}
 
-      {/* Report Parent Modal */}
+      {/* ── Cash Confirmation Modal ─────────────────────────── */}
+      {confirmCash.open && confirmCash.booking && (
+        <div className="modal-overlay" onClick={() => setConfirmCash({ open: false, booking: null })}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <h3>💵 Cash Payment</h3>
+              <button className="modal-close" onClick={() => setConfirmCash({ open: false, booking: null })}>×</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '0.95rem', marginBottom: 8 }}>
+                Did you receive the cash payment of{' '}
+                <strong>${parseFloat(confirmCash.booking.total_amount || 0).toFixed(2)}</strong>{' '}
+                from {confirmCash.booking.parent_first_name} {confirmCash.booking.parent_last_name}?
+              </p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                Confirming will credit your wallet and mark the booking as completed.
+              </p>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmCash({ open: false, booking: null })}>
+                Cancel
+              </button>
+              <button className="btn btn-outline-danger" onClick={() => handleCashNo(confirmCash.booking)}>
+                ❌ No, didn't receive
+              </button>
+              <button className="btn btn-success" onClick={() => handleCashYes(confirmCash.booking)}>
+                ✅ Yes, received
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Parent Modal — also handles "payment_issue" */}
       {selectedBookingForReport && (
         <ReportModal
           isOpen={showReportModal}
@@ -1710,11 +1902,12 @@ function BabysitterDashboard() {
           reportedRole="parent"
           bookingId={selectedBookingForReport.id}
           reporterRole="babysitter"
+          defaultCategory={reportDefaultCategory}
           onSuccess={() => { addToast('Report submitted successfully!', 'success'); }}
         />
       )}
 
-      {/* ✅ Drill-Down Modal */}
+      {/* Drill-Down Modal */}
       <StatDetailModal
         isOpen={detailModal.open}
         onClose={() => setDetailModal({ open: false, type: null, statusFilter: null })}
