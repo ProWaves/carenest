@@ -14,6 +14,22 @@ const COLORS = {
   gray: '#6b7280', white: '#ffffff'
 };
 
+// Decides whether a document URL should render as an <img> or an <iframe>.
+// Works for both legacy paths ("/uploads/xyz.jpg") and new numeric ids
+// ("/uploads/42") which have no file extension.
+function isImageDocument(doc) {
+  if (!doc) return false;
+  const url = doc.document_url || '';
+  const mime = (doc.mime_type || '').toLowerCase();
+
+  // Trust the stored MIME type first
+  if (mime.startsWith('image/')) return true;
+  if (mime === 'application/pdf') return false;
+
+  // Fallback: check the file extension in the URL
+  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(url);
+}
+
 function DonutChart({ data, size = 160 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   if (total === 0) return <div style={{ width: size, height: size, borderRadius: '50%', background: 'rgba(107,114,128,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>No data</div>;
@@ -1505,12 +1521,26 @@ function AdminDashboard() {
       {selectedDoc && (
         <div className="modal-overlay" onClick={() => setSelectedDoc(null)}>
           <div className="modal document-viewer" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h3>{getDocumentTypeLabel(selectedDoc.document_type)} - {selectedDoc.first_name} {selectedDoc.last_name}</h3><button className="modal-close" onClick={() => setSelectedDoc(null)}>×</button></div>
+            <div className="modal-header">
+              <h3>{getDocumentTypeLabel(selectedDoc.document_type)} - {selectedDoc.first_name} {selectedDoc.last_name}</h3>
+              <button className="modal-close" onClick={() => setSelectedDoc(null)}>×</button>
+            </div>
             <div className="modal-body">
-  {selectedDoc.document_url?.match(/\.(jpg|jpeg|png|gif)$/i) ? <img src={assetUrl(selectedDoc.document_url)} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} /> : <iframe src={assetUrl(selectedDoc.document_url)} title="Document" style={{ width: '100%', height: '70vh', border: 'none', background: 'var(--color-bg-alt)' }} />}
-</div>
+              {isImageDocument(selectedDoc) ? (
+                <img
+                  src={assetUrl(selectedDoc.document_url)}
+                  alt="Document"
+                  style={{ maxWidth: '100%', maxHeight: '70vh', display: 'block', margin: '0 auto' }}
+                />
+              ) : (
+                <iframe
+                  src={assetUrl(selectedDoc.document_url)}
+                  title="Document Preview"
+                  style={{ width: '100%', height: '70vh', border: 'none', background: '#f5f5f5' }}
+                />
+              )}
+            </div>
             <div className="modal-footer">
-              {selectedDoc.document_url?.match(/\.(jpg|jpeg|png|gif)$/i) ? <img src={assetUrl(selectedDoc.document_url)} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} /> : <iframe src={assetUrl(selectedDoc.document_url)} title="Document" style={{ width: '100%', height: '70vh', border: 'none', background: 'var(--color-bg-alt)' }} />}
               <button className="btn btn-secondary" onClick={() => setSelectedDoc(null)}>Close</button>
             </div>
           </div>
@@ -1621,6 +1651,8 @@ function AdminDashboard() {
       <AdminChatbot />
     </div>
   );
+
+
 }
 
 export default AdminDashboard;
