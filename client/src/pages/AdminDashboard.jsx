@@ -1507,8 +1507,8 @@ function AdminDashboard() {
           <div className="modal document-viewer" onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h3>{getDocumentTypeLabel(selectedDoc.document_type)} - {selectedDoc.first_name} {selectedDoc.last_name}</h3><button className="modal-close" onClick={() => setSelectedDoc(null)}>×</button></div>
             <div className="modal-body">
-              {selectedDoc.document_url?.match(/\.(jpg|jpeg|png|gif)$/i) ? <img src={selectedDoc.document_url} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} /> : <iframe src={selectedDoc.document_url} title="Document" style={{ width: '100%', height: '70vh', border: 'none', background: 'var(--color-bg-alt)' }} />}
-            </div>
+  {selectedDoc.document_url?.match(/\.(jpg|jpeg|png|gif)$/i) ? <img src={assetUrl(selectedDoc.document_url)} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} /> : <iframe src={assetUrl(selectedDoc.document_url)} title="Document" style={{ width: '100%', height: '70vh', border: 'none', background: 'var(--color-bg-alt)' }} />}
+</div>
             <div className="modal-footer">
               {selectedDoc.document_url?.match(/\.(jpg|jpeg|png|gif)$/i) ? <img src={assetUrl(selectedDoc.document_url)} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} /> : <iframe src={assetUrl(selectedDoc.document_url)} title="Document" style={{ width: '100%', height: '70vh', border: 'none', background: 'var(--color-bg-alt)' }} />}
               <button className="btn btn-secondary" onClick={() => setSelectedDoc(null)}>Close</button>
