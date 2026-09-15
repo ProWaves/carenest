@@ -8,6 +8,14 @@ import PhoneInput from '../components/PhoneInput';
 import BackButton from '../components/BackButton';
 import AIChatbot from '../components/AIChatbotGate';
 
+// ✅ Strip the trailing "/api" from VITE_API_URL so we can build absolute
+//    URLs for static assets served from the backend (e.g. /uploads/*).
+//    - Production:  VITE_API_URL=https://sitterspot-backend.onrender.com/api
+//                   → ASSET_BASE=https://sitterspot-backend.onrender.com
+//    - Local dev:   VITE_API_URL=/api
+//                   → ASSET_BASE="" (Vite proxies /uploads to the backend)
+const ASSET_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
+
 function ProfilePage() {
   const { user, setUser } = useAuth();
   const { t } = useLanguage();
@@ -19,7 +27,7 @@ function ProfilePage() {
   const [error, setError] = useState('');
   const [showAIChat, setShowAIChat] = useState(false);
 
-  // ✅ NEW: Bank account state
+  // Bank account state
   const [bankAccounts, setBankAccounts] = useState([]);
   const [payoutForm, setPayoutForm] = useState({
     bank_name: '',
@@ -42,7 +50,7 @@ function ProfilePage() {
     }
   }, [user]);
 
-  // ✅ NEW: Load bank accounts on mount
+  // Load bank accounts on mount
   useEffect(() => {
     const loadAccounts = async () => {
       try {
@@ -107,7 +115,7 @@ function ProfilePage() {
     input.click();
   };
 
-  // ✅ NEW: Save bank account
+  // Save bank account
   const saveBankAccount = async (e) => {
     e.preventDefault();
     if (!payoutForm.bank_name.trim() || !payoutForm.holder_name.trim() || !payoutForm.iban.trim()) {
@@ -128,7 +136,7 @@ function ProfilePage() {
     }
   };
 
-  // ✅ NEW: Delete bank account
+  // Delete bank account
   const deleteBankAccount = async (id) => {
     if (!window.confirm('Remove this bank account?')) return;
     try {
@@ -172,7 +180,11 @@ function ProfilePage() {
           <div className="profile-hero-bg" />
           <div className="profile-hero-avatar-wrap" onClick={uploadAvatar}>
             {user?.avatar_url ? (
-              <img src={user.avatar_url} alt="Avatar" className="profile-hero-avatar-img" />
+              <img
+                src={`${ASSET_BASE}${user.avatar_url}`}
+                alt=""
+                className="profile-hero-avatar-img"
+              />
             ) : (
               <div className="profile-hero-avatar">
                 {user?.first_name?.[0]}{user?.last_name?.[0]}
@@ -292,7 +304,6 @@ function ProfilePage() {
             </form>
           </div>
 
-          {/* ✅ NEW: Payment Method section */}
           <div className="profile-section">
             <div className="profile-section-header">
               <div className="profile-section-icon">
