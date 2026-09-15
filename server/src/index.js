@@ -127,6 +127,11 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
   console.log(`📁 Created uploads dir: ${uploadsDir}`);
 }
+const uploadsRoutes = require('./routes/uploads');
+app.use('/uploads', uploadsRoutes);
+app.use('/api/uploads', uploadsRoutes);
+
+// Legacy disk fallback for any file that still lives under uploads/
 app.use('/uploads', express.static(uploadsDir));
 
 // ============================================

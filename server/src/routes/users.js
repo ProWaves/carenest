@@ -67,22 +67,40 @@ router.put('/password', authenticate, async (req, res) => {
 });
 
 // POST /api/users/avatar
+// ✅ UPDATED: writes bytes into `uploads` table, stores "/uploads/<id>"
+//    in users.avatar_url. Legacy disk path is never used.
 router.post('/avatar', authenticate, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded.' });
     }
-    const avatarUrl = `/uploads/${req.file.filename}`;
+
+    const insert = await db.query(
+      `INSERT INTO uploads (filename, mime_type, size, data, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [
+        req.file.originalname || 'avatar',
+        req.file.mimetype || 'application/octet-stream',
+        req.file.size,
+        req.file.buffer,
+        req.user.id,
+      ]
+    );
+
+    const avatarUrl = `/uploads/${insert.rows[0].id}`;
+
     await db.query('UPDATE users SET avatar_url = $1 WHERE id = $2', [avatarUrl, req.user.id]);
+
     res.json({ avatar_url: avatarUrl });
   } catch (error) {
+    console.error('Upload avatar error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
 
 // DELETE /api/users/avatar
-// Removes the user's avatar. Note: this only clears the DB reference — the
-// file remains on disk for safety. A cleanup cron job can prune orphans later.
+// Removes the DB reference. The uploads row stays for audit (small).
 router.delete('/avatar', authenticate, async (req, res) => {
   try {
     await db.query('UPDATE users SET avatar_url = NULL WHERE id = $1', [req.user.id]);
@@ -94,7 +112,6 @@ router.delete('/avatar', authenticate, async (req, res) => {
 });
 
 // POST /api/users/fcm-token
-// Stores the device's FCM token so the backend can push to this user.
 router.post('/fcm-token', authenticate, async (req, res) => {
   try {
     const { fcm_token } = req.body;
@@ -103,7 +120,6 @@ router.post('/fcm-token', authenticate, async (req, res) => {
     }
 
     const token = fcm_token.trim();
-
     const FCM_TOKEN_RE = /^[A-Za-z0-9_\-:]{100,250}$/;
     if (!FCM_TOKEN_RE.test(token)) {
       return res.status(400).json({
@@ -116,11 +132,7 @@ router.post('/fcm-token', authenticate, async (req, res) => {
       'UPDATE users SET fcm_token = NULL WHERE fcm_token = $1 AND id != $2',
       [token, req.user.id]
     );
-
-    await db.query(
-      'UPDATE users SET fcm_token = $1 WHERE id = $2',
-      [token, req.user.id]
-    );
+    await db.query('UPDATE users SET fcm_token = $1 WHERE id = $2', [token, req.user.id]);
 
     res.json({ message: 'FCM token registered.' });
   } catch (error) {

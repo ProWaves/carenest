@@ -742,7 +742,7 @@ router.post('/availability/unpublish/:id', authenticate, authorize('babysitter')
 });
 
 // ============================================
-// 6. DOCUMENT MANAGEMENT
+// 6. DOCUMENT MANAGEMENT (Postgres-backed)
 // ============================================
 
 // POST /api/babysitters/documents
@@ -762,7 +762,21 @@ router.post('/documents', authenticate, authorize('babysitter'), upload.single('
     }
 
     const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
-    const docUrl = `/uploads/${req.file.filename}`;
+
+    // ✅ Store bytes in uploads table — survives every deploy
+    const insert = await db.query(
+      `INSERT INTO uploads (filename, mime_type, size, data, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [
+        req.file.originalname || 'document',
+        req.file.mimetype || 'application/octet-stream',
+        req.file.size,
+        req.file.buffer,
+        req.user.id,
+      ]
+    );
+    const docUrl = `/uploads/${insert.rows[0].id}`;
 
     const result = await db.query(
       `INSERT INTO babysitter_documents (babysitter_id, document_type, document_url) 
@@ -864,8 +878,22 @@ router.put('/documents/:id', authenticate, authorize('babysitter'), upload.singl
       params.push(document_type);
       paramIndex++;
     }
+
     if (req.file) {
-      const docUrl = `/uploads/${req.file.filename}`;
+      // ✅ Store new bytes in uploads table — survives deploys
+      const insert = await db.query(
+        `INSERT INTO uploads (filename, mime_type, size, data, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [
+          req.file.originalname || 'document',
+          req.file.mimetype || 'application/octet-stream',
+          req.file.size,
+          req.file.buffer,
+          req.user.id,
+        ]
+      );
+      const docUrl = `/uploads/${insert.rows[0].id}`;
       query += `, document_url = $${paramIndex}`;
       params.push(docUrl);
       paramIndex++;
@@ -917,7 +945,7 @@ router.get('/documents', authenticate, authorize('babysitter'), async (req, res)
 });
 
 // ============================================
-// 7. GALLERY MANAGEMENT
+// 7. GALLERY MANAGEMENT (Postgres-backed)
 // ============================================
 
 router.post('/gallery', authenticate, authorize('babysitter'), upload.single('image'), async (req, res) => {
@@ -934,7 +962,21 @@ router.post('/gallery', authenticate, authorize('babysitter'), upload.single('im
 
     const { caption } = req.body;
     const profile = await db.query('SELECT id FROM babysitter_profiles WHERE user_id = $1', [req.user.id]);
-    const imageUrl = `/uploads/${req.file.filename}`;
+
+    // ✅ Store bytes in uploads table — survives deploys
+    const insert = await db.query(
+      `INSERT INTO uploads (filename, mime_type, size, data, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [
+        req.file.originalname || 'gallery',
+        req.file.mimetype || 'application/octet-stream',
+        req.file.size,
+        req.file.buffer,
+        req.user.id,
+      ]
+    );
+    const imageUrl = `/uploads/${insert.rows[0].id}`;
 
     const existing = await db.query('SELECT id FROM babysitter_images WHERE babysitter_id = $1', [profile.rows[0].id]);
     const isPrimary = existing.rows.length === 0;
