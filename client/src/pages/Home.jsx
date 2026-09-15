@@ -61,6 +61,54 @@ function Home() {
           </div>
         </div>
       </div>
+            {/* MISSION */}
+      <section className="section" style={{ paddingTop: '20px' }}>
+        <div style={{
+          maxWidth: '780px',
+          margin: '0 auto',
+          textAlign: 'center',
+          position: 'relative',
+        }}>
+          {/* Decorative quote mark */}
+          <div
+            aria-hidden="true"
+            style={{
+              fontSize: '4rem',
+              lineHeight: 1,
+              color: 'var(--color-primary-200)',
+              fontFamily: 'Georgia, serif',
+              opacity: 0.7,
+              marginBottom: '8px',
+              userSelect: 'none',
+            }}
+          >
+            &ldquo;
+          </div>
+
+          <h2 style={{
+            fontSize: '0.85rem',
+            fontWeight: '700',
+            color: 'var(--color-primary-600)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+            margin: '0 0 16px',
+          }}>
+            {t('home.missionLabel')}
+          </h2>
+
+          <p style={{
+            fontSize: '1.25rem',
+            lineHeight: 1.7,
+            color: 'var(--color-text)',
+            fontWeight: '500',
+            margin: 0,
+          }}>
+            {t('home.missionText')}
+          </p>
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
 
       {/* HOW IT WORKS */}
       <section className="section">

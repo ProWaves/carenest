@@ -42,7 +42,9 @@
 "valueTrusted": "De confiance",
 "valueTrustedDesc": "Adoré par les familles à travers tout le pays.",
 "testimonialsTitle": "Pourquoi le babysitting compte",
-  "testimonialsSubtitle": "Réflexions de parents, de babysitters, et de ceux qui comptent sur eux."
+  "testimonialsSubtitle": "Réflexions de parents, de babysitters, et de ceux qui comptent sur eux.",
+  "missionLabel": "Notre mission",
+"missionText": "Chaque parent mérite de sortir de chez lui en sachant que son enfant est en sécurité, vu et bien entouré. Chaque babysitter mérite d'être traité comme le professionnel qu'il est. SitterSpot existe pour combler cet écart — une réservation de confiance à la fois."
   },
   "auth": {
     "login": "Connexion",

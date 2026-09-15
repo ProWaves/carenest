@@ -42,8 +42,9 @@
 "valueTrusted": "Trusted",
 "valueTrustedDesc": "Loved by families across the country.",
 "testimonialsTitle": "Why Babysitting Matters",
-    "testimonialsSubtitle": "Reflections from parents, sitters, and the people who depend on them."
-
+    "testimonialsSubtitle": "Reflections from parents, sitters, and the people who depend on them.",
+"missionLabel": "Our Mission",
+"missionText": "Every parent deserves to walk out the door knowing their child is safe, seen, and cared for. Every babysitter deserves to be treated like the professional they are. SitterSpot exists to close that gap — one trusted booking at a time."
 
   },
   "auth": {
