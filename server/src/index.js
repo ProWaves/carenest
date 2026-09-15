@@ -73,6 +73,25 @@ app.use((req, res, next) => {
 });
 
 // ============================================
+// ✅ NO-CACHE MIDDLEWARE FOR API ROUTES
+// ============================================
+// Express sets ETag on every JSON response by default. Browsers then send
+// If-None-Match on subsequent requests, Express replies 304 Not Modified
+// (no body), and the browser serves stale data. That breaks endpoints like
+// GET /babysitters/:id — the parent keeps seeing the old profile after the
+// sitter updates it.
+//
+// We disable caching for everything under /api, but leave /uploads cacheable
+// (static assets don't change, so caching them is good).
+// ============================================
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
+// ============================================
 // ROUTES
 // ============================================
 const authRoutes = require('./routes/auth');
@@ -89,8 +108,8 @@ const jobRoutes = require('./routes/jobs');
 const paymentRoutes = require('./routes/payments');
 
 // AI modules
-const adminAiRoutes = require('./ai/admin');       // admin AI
-const aiChatRoutes = require('./ai/parent');       // parent/babysitter AI
+const adminAiRoutes = require('./ai/admin');
+const aiChatRoutes = require('./ai/parent');
 
 const { setupChatSocket } = require('./sockets/chat');
 const { setIo: setNotificationIo } = require('./routes/notifications');
@@ -228,5 +247,6 @@ const HOST = '0.0.0.0';
 server.listen(PORT, HOST, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔥 CORS: ALLOWING SPECIFIC ORIGINS`);
+  console.log(`🚫 API responses: no-cache`);
   console.log(`📁 Uploads served from: ${path.join(__dirname, '../uploads')}`);
 });

@@ -2,7 +2,8 @@
 // axios.js — Pre-configured Axios Client
 // ==========================================================================
 // Sets baseURL based on environment (production or development).
-// Request interceptor: attaches JWT from localStorage to every request.
+// Request interceptor: attaches JWT from localStorage to every request,
+//                      and appends a cache-busting timestamp to every GET.
 // Response interceptor: on 401, clears stored session and redirects to /login.
 // ==========================================================================
 
@@ -33,7 +34,9 @@ const API = axios.create({
 // REQUEST INTERCEPTOR
 // ============================================
 // Attaches JWT token to every outgoing request.
-// Also logs requests in development mode.
+// Appends a cache-busting `_t` timestamp to every GET so browsers and
+// proxies cannot serve stale 304 Not Modified responses.
+// Logs requests in development mode.
 // ============================================
 API.interceptors.request.use(
   (config) => {
@@ -45,12 +48,22 @@ API.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
+    // ✅ Bust the HTTP cache on every GET request.
+    // Express sets ETag on every JSON response by default. On a subsequent
+    // request to the same URL, the browser sends If-None-Match, Express
+    // replies 304 Not Modified (no body), and the browser serves stale data.
+    // That breaks endpoints like GET /babysitters/:id — the parent keeps
+    // seeing the old profile after the sitter updates it.
+    // Appending a unique timestamp makes every URL unique, so no 304s.
+    if (config.method === 'get') {
+      config.params = { ...(config.params || {}), _t: Date.now() };
+    }
+
     // Log request in development
     if (import.meta.env.DEV) {
       console.log(`🚀 [API Request] ${config.method?.toUpperCase()} ${config.url}`, {
         data: config.data,
         params: config.params,
-        headers: config.headers,
       });
     }
 
