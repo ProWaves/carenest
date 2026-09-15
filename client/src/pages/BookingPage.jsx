@@ -7,6 +7,14 @@ import { useToast } from '../components/Toast';
 import AIChatbot from '../components/AIChatbotGate';
 import ReportModal from '../components/ReportModal';
 
+
+const ASSET_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
+const assetUrl = (path) => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return `${ASSET_BASE}${path}`;
+};
+
 function BookingPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -298,15 +306,24 @@ function BookingPage() {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', position: 'relative' }}>
               <div style={{
-                width: '64px', height: '64px', borderRadius: '18px',
-                background: 'rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(8px)',
-                border: '2px solid rgba(255,255,255,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 'bold', fontSize: '22px', flexShrink: 0,
-              }}>
-                {babysitter.first_name?.[0]}{babysitter.last_name?.[0]}
-              </div>
+  width: '64px', height: '64px', borderRadius: '18px',
+  background: 'rgba(255,255,255,0.2)',
+  backdropFilter: 'blur(8px)',
+  border: '2px solid rgba(255,255,255,0.3)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontWeight: 'bold', fontSize: '22px', flexShrink: 0,
+  overflow: 'hidden',
+}}>
+  {babysitter.avatar_url ? (
+    <img
+      src={assetUrl(babysitter.avatar_url)}
+      alt=""
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+    />
+  ) : (
+    <>{babysitter.first_name?.[0]}{babysitter.last_name?.[0]}</>
+  )}
+</div>
               <div>
                 <div style={{ fontSize: '1.2rem', fontWeight: '700' }}>
                   {babysitter.first_name} {babysitter.last_name}

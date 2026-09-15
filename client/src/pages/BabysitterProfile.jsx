@@ -8,6 +8,14 @@ import { useToast } from '../components/Toast';
 import AIChatbot from '../components/AIChatbotGate';
 import ReportModal from '../components/ReportModal';
 
+const ASSET_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
+
+const assetUrl = (path) => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return `${ASSET_BASE}${path}`;
+};
+
 function BabysitterProfile() {
   const { id } = useParams();
   const { user } = useAuth();

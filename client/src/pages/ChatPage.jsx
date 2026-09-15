@@ -8,6 +8,13 @@ import { playMessageSound } from '../utils/sounds';
 import BackButton from '../components/BackButton';
 import AIChatbot from '../components/AIChatbotGate';
 
+const ASSET_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
+const assetUrl = (path) => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  return `${ASSET_BASE}${path}`;
+};
+
 function ChatPage() {
   const { userId: paramUserId } = useParams();
   const { user } = useAuth();
@@ -201,11 +208,19 @@ function ChatPage() {
                 onClick={() => selectConversation(conv)}
               >
                 <div className="conv-avatar-wrap">
-                  <div className="conv-avatar">
-                    {conv.first_name?.[0]}{conv.last_name?.[0]}
-                  </div>
-                  {isOnline(conv.user_id) && <span className="conv-online-dot" />}
-                </div>
+  <div className="conv-avatar" style={{ overflow: 'hidden' }}>
+    {conv.avatar_url ? (
+      <img
+        src={assetUrl(conv.avatar_url)}
+        alt=""
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      />
+    ) : (
+      <>{conv.first_name?.[0]}{conv.last_name?.[0]}</>
+    )}
+  </div>
+  {isOnline(conv.user_id) && <span className="conv-online-dot" />}
+</div>
                 <div className="conv-info">
                   <div className="conv-top-row">
                     <span className="conv-name">{conv.first_name} {conv.last_name}</span>
@@ -233,11 +248,19 @@ function ChatPage() {
             <>
               <div className="chat-header">
                 <div className="chat-header-avatar-wrap">
-                  <div className="chat-header-avatar">
-                    {activeUser.first_name?.[0]}{activeUser.last_name?.[0]}
-                  </div>
-                  {isOnline(activeUser.user_id) && <span className="chat-header-online-dot" />}
-                </div>
+  <div className="chat-header-avatar" style={{ overflow: 'hidden' }}>
+    {activeUser.avatar_url ? (
+      <img
+        src={assetUrl(activeUser.avatar_url)}
+        alt=""
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      />
+    ) : (
+      <>{activeUser.first_name?.[0]}{activeUser.last_name?.[0]}</>
+    )}
+  </div>
+  {isOnline(activeUser.user_id) && <span className="chat-header-online-dot" />}
+</div>
                 <div className="chat-header-info">
                   <strong>{activeUser.first_name} {activeUser.last_name}</strong>
                   <span className={`chat-header-status ${isOnline(activeUser.user_id) ? 'online' : ''}`}>
@@ -258,10 +281,18 @@ function ChatPage() {
                   return (
                     <div key={msg.id} className={`message ${isSent ? 'sent' : 'received'}`}>
                       {!isSent && (
-                        <div className="message-avatar">
-                          {activeUser.first_name?.[0]}{activeUser.last_name?.[0]}
-                        </div>
-                      )}
+  <div className="message-avatar" style={{ overflow: 'hidden' }}>
+    {activeUser.avatar_url ? (
+      <img
+        src={assetUrl(activeUser.avatar_url)}
+        alt=""
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      />
+    ) : (
+      <>{activeUser.first_name?.[0]}{activeUser.last_name?.[0]}</>
+    )}
+  </div>
+)}
                       <div className="message-body">
                         <div className="message-bubble">{msg.content}</div>
                         <div className="message-meta">
