@@ -4,8 +4,16 @@ const VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 async function verifyTurnstile(req, res, next) {
   const secret = process.env.TURNSTILE_SECRET_KEY;
 
+  // If not configured, skip (dev / early deploy friendly)
   if (!secret) {
     console.warn('⚠️  TURNSTILE_SECRET_KEY missing — skipping CAPTCHA check.');
+    return next();
+  }
+
+  // ✅ NEW: skip CAPTCHA for the native Android app.
+  // The app sends X-Client-Type: mobile on every request.
+  // (Not cryptographically secure — see notes in the code review.)
+  if (req.headers['x-client-type'] === 'mobile') {
     return next();
   }
 
