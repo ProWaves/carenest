@@ -182,7 +182,7 @@ router.get('/bank-accounts', authenticate, async (req, res) => {
 });
 
 // Create
-router.post('/bank-accounts', authenticate, authorize('babysitter'), async (req, res) => {
+router.post('/bank-accounts', authenticate, async (req, res) => {
   const { bank_name, holder_name, iban, is_default } = req.body;
 
   if (!bank_name || !holder_name || !iban) {
@@ -230,7 +230,7 @@ router.post('/bank-accounts', authenticate, authorize('babysitter'), async (req,
 });
 
 // Delete
-router.delete('/bank-accounts/:id', authenticate, authorize('babysitter'), async (req, res) => {
+router.delete('/bank-accounts/:id', authenticate, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await db.query(
