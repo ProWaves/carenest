@@ -10,6 +10,7 @@ import ReportModal from '../components/ReportModal';
 import BabysitterLocation from '../components/BabysitterLocation';
 import Rating from '../components/Rating';
 import StatDetailModal from '../components/StatDetailModal';
+import { assetUrl } from '../utils/assets';
 
 function BabysitterDashboard() {
   const { user } = useAuth();
@@ -68,7 +69,7 @@ function BabysitterDashboard() {
   const [reviewData, setReviewData] = useState({ rating: 5, comment: '' });
   const [bookingToReview, setBookingToReview] = useState(null);
 
-  // ── Cash confirmation modal state ────────────────────────────
+  // Cash confirmation modal state
   const [confirmCash, setConfirmCash] = useState({ open: false, booking: null });
 
   // Report state
@@ -226,7 +227,6 @@ function BabysitterDashboard() {
     if (method === 'cash') {
       setConfirmCash({ open: true, booking });
     } else {
-      // Online — just complete
       handleBookingStatus(booking.id, 'completed');
     }
   };
@@ -245,9 +245,7 @@ function BabysitterDashboard() {
     try {
       await handleBookingStatus(booking.id, 'completed');
       await markBookingPaid(booking.id);
-    } catch (e) {
-      // handleBookingStatus already toasts on failure
-    }
+    } catch (e) {}
     loadAllData();
   };
 
@@ -478,9 +476,6 @@ function BabysitterDashboard() {
     }
   };
 
-  // ============================================
-  // PUBLISH AVAILABILITY
-  // ============================================
   const publishAvailability = async () => {
     if (profile?.status !== 'approved') {
       addToast('Your profile must be approved before you can publish availability.', 'error');
@@ -865,7 +860,6 @@ function BabysitterDashboard() {
                     ${b.total_amount ? parseFloat(b.total_amount).toFixed(2) : '0.00'}
                   </div>
 
-                  {/* Payment badges */}
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{
                       fontSize: '0.7rem', fontWeight: '600', padding: '3px 8px', borderRadius: '10px',
@@ -1073,7 +1067,6 @@ function BabysitterDashboard() {
           </div>
         </div>
 
-        {/* ── Payment Preference ───────────────────────────── */}
         <div className="form-group">
           <label>💳 Payment Preference</label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
@@ -1427,7 +1420,12 @@ function BabysitterDashboard() {
                 {doc.rejection_reason && (
                   <button className="btn btn-sm btn-primary" onClick={() => updateDocument(doc.id)}>🔄 Resubmit</button>
                 )}
-                <button className="btn btn-sm btn-outline" onClick={() => window.open(doc.document_url, '_blank')}>👁️ View</button>
+                <button
+                  className="btn btn-sm btn-outline"
+                  onClick={() => window.open(assetUrl(doc.document_url), '_blank')}
+                >
+                  👁️ View
+                </button>
                 <button className="btn btn-sm btn-outline-danger" onClick={() => deleteDocument(doc.id)}>🗑️ Delete</button>
               </div>
             </div>
@@ -1494,7 +1492,11 @@ function BabysitterDashboard() {
       <div className="image-gallery">
         {gallery.map((img) => (
           <div key={img.id} style={{ position: 'relative', display: 'inline-block' }}>
-            <img src={img.image_url} alt={img.caption || ''} className={`gallery-image ${img.is_primary ? 'primary' : ''}`} />
+            <img
+              src={assetUrl(img.image_url)}
+              alt={img.caption || ''}
+              className={`gallery-image ${img.is_primary ? 'primary' : ''}`}
+            />
             <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 4 }}>
               {!img.is_primary && (
                 <button onClick={() => setPrimaryImage(img.id)} className="btn btn-sm btn-outline" title="Set as primary" style={{ padding: '2px 6px', fontSize: '0.7rem', background: 'var(--surface)' }}>⭐</button>
@@ -1859,7 +1861,7 @@ function BabysitterDashboard() {
         </div>
       )}
 
-      {/* ── Cash Confirmation Modal ─────────────────────────── */}
+      {/* Cash Confirmation Modal */}
       {confirmCash.open && confirmCash.booking && (
         <div className="modal-overlay" onClick={() => setConfirmCash({ open: false, booking: null })}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
@@ -1892,7 +1894,7 @@ function BabysitterDashboard() {
         </div>
       )}
 
-      {/* Report Parent Modal — also handles "payment_issue" */}
+      {/* Report Parent Modal */}
       {selectedBookingForReport && (
         <ReportModal
           isOpen={showReportModal}

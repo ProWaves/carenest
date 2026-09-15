@@ -14,23 +14,6 @@
 //     firstName={user.first_name}
 //     lastName={user.last_name}
 //   />
-//
-// Props:
-//   user        object with { avatar_url, first_name, last_name } (optional)
-//   avatarUrl   string (overrides user.avatar_url)
-//   firstName   string (overrides user.first_name)
-//   lastName    string (overrides user.last_name)
-//   size        number (pixels), default 40. Applied to width/height.
-//   shape       'circle' | 'rounded' | 'square'. Default 'circle'.
-//               'rounded' uses 12px, 'square' uses 0.
-//   fontSize    number or CSS string. Default = size * 0.4 (in px).
-//   style       extra inline styles merged onto the wrapper
-//   className   extra CSS class on the wrapper
-//   alt         override alt text on <img>
-//   title       tooltip text on wrapper
-//
-// The component tracks its own image-failure state so a broken URL falls
-// back to initials immediately, without needing parent state.
 // ==========================================================================
 
 import { useState, useEffect } from 'react';
@@ -65,7 +48,6 @@ function Avatar({
   const [imgFailed, setImgFailed] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
 
-  // Reset failure state if the URL changes (e.g. user uploads a new avatar).
   useEffect(() => {
     setImgFailed(false);
     setImgLoaded(false);
@@ -110,8 +92,6 @@ function Avatar({
     >
       {showImage ? (
         <>
-          {/* Render the initials underneath — they'll be visible if the image
-              loads slowly, then covered once the image fires onLoad. */}
           <span
             aria-hidden="true"
             style={{

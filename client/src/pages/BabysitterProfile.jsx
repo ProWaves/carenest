@@ -1,3 +1,4 @@
+// client/src/pages/BabysitterProfile.jsx
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import API from '../api/axios';
@@ -8,6 +9,7 @@ import { useToast } from '../components/Toast';
 import AIChatbot from '../components/AIChatbotGate';
 import ReportModal from '../components/ReportModal';
 import Avatar from '../components/Avatar';
+import { assetUrl } from '../utils/assets';
 
 function BabysitterProfile() {
   const { id } = useParams();
@@ -224,8 +226,6 @@ function BabysitterProfile() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px', position: 'relative' }}>
-              {/* ✅ Uses <Avatar> which resolves /uploads/... via assetUrl()
-                  and falls back to gradient initials. */}
               <Avatar
                 user={profile}
                 size={80}
@@ -572,9 +572,9 @@ function BabysitterProfile() {
                   {gallery.map((img) => (
                     <img
                       key={img.id}
-                      src={img.image_url}
+                      src={assetUrl(img.image_url)}
                       alt={img.caption || ''}
-                      onClick={() => setLightboxImg(img.image_url)}
+                      onClick={() => setLightboxImg(assetUrl(img.image_url))}
                       style={{
                         width: 80, height: 80,
                         borderRadius: 'var(--radius)',

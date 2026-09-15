@@ -5,7 +5,8 @@ import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../components/Toast';
 import AdminLocationManager from '../components/admin/AdminLocationManager';
 import StatDetailModal from '../components/StatDetailModal';
-import AdminChatbot from '../components/admin/AdminChatbot';   // 👈 ADDED
+import AdminChatbot from '../components/admin/AdminChatbot';   
+import { assetUrl } from '../utils/assets';
 
 const COLORS = {
   purple: '#6366f1', green: '#10b981', amber: '#f59e0b', red: '#ef4444',
@@ -1509,11 +1510,7 @@ function AdminDashboard() {
               {selectedDoc.document_url?.match(/\.(jpg|jpeg|png|gif)$/i) ? <img src={selectedDoc.document_url} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} /> : <iframe src={selectedDoc.document_url} title="Document" style={{ width: '100%', height: '70vh', border: 'none', background: 'var(--color-bg-alt)' }} />}
             </div>
             <div className="modal-footer">
-              {!selectedDoc.is_verified && (<>
-                <button className="btn btn-verify" onClick={() => { verifyDocument(selectedDoc.id, true); setSelectedDoc(null); }}>Approve</button>
-                <button className="btn btn-revision" onClick={() => { setCurrentDocId(selectedDoc.id); setShowRevisionModal(true); setSelectedDoc(null); }}>Revision</button>
-                <button className="btn btn-reject" onClick={() => { verifyDocument(selectedDoc.id, false, 'Rejected'); setSelectedDoc(null); }}>Reject</button>
-              </>)}
+              {selectedDoc.document_url?.match(/\.(jpg|jpeg|png|gif)$/i) ? <img src={assetUrl(selectedDoc.document_url)} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} /> : <iframe src={assetUrl(selectedDoc.document_url)} title="Document" style={{ width: '100%', height: '70vh', border: 'none', background: 'var(--color-bg-alt)' }} />}
               <button className="btn btn-secondary" onClick={() => setSelectedDoc(null)}>Close</button>
             </div>
           </div>

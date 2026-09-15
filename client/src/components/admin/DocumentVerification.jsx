@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import API from '../../api/axios';
 import { useToast } from '../Toast';
+import { assetUrl } from '../../utils/assets';
 
 function DocumentVerification({ onUpdate }) {
   const [documents, setDocuments] = useState([]);
@@ -31,12 +32,12 @@ function DocumentVerification({ onUpdate }) {
 
   const handleVerify = async (docId, isVerified, rejectionReason = null) => {
     try {
-      await API.put(`/admin/documents/${docId}/verify`, { 
+      await API.put(`/admin/documents/${docId}/verify`, {
         is_verified: isVerified,
         rejection_reason: rejectionReason,
         admin_notes: rejectionReason
       });
-      
+
       addToast(`Document ${isVerified ? 'verified' : 'rejected'} successfully`, 'success');
       loadDocuments();
       if (onUpdate) onUpdate();
@@ -110,25 +111,25 @@ function DocumentVerification({ onUpdate }) {
       </div>
 
       <div className="filter-tabs">
-        <button 
+        <button
           className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
           onClick={() => setFilter('all')}
         >
           All ({documents.length})
         </button>
-        <button 
+        <button
           className={`filter-tab ${filter === 'pending' ? 'active' : ''}`}
           onClick={() => setFilter('pending')}
         >
           Pending ({documents.filter(d => !d.is_verified && !d.rejection_reason).length})
         </button>
-        <button 
+        <button
           className={`filter-tab ${filter === 'revision' ? 'active' : ''}`}
           onClick={() => setFilter('revision')}
         >
           Revision Needed ({documents.filter(d => d.rejection_reason).length})
         </button>
-        <button 
+        <button
           className={`filter-tab ${filter === 'verified' ? 'active' : ''}`}
           onClick={() => setFilter('verified')}
         >
@@ -186,7 +187,7 @@ function DocumentVerification({ onUpdate }) {
                 </div>
 
                 <div className="doc-preview">
-                  <button 
+                  <button
                     className="btn btn-view-doc"
                     onClick={() => setSelectedDoc(doc)}
                   >
@@ -197,13 +198,13 @@ function DocumentVerification({ onUpdate }) {
 
               {!doc.is_verified && (
                 <div className="doc-card-footer">
-                  <button 
+                  <button
                     className="btn btn-verify"
                     onClick={() => handleVerify(doc.id, true)}
                   >
                     ✓ Approve
                   </button>
-                  <button 
+                  <button
                     className="btn btn-revision"
                     onClick={() => {
                       setCurrentDocId(doc.id);
@@ -212,7 +213,7 @@ function DocumentVerification({ onUpdate }) {
                   >
                     🔄 Request Revision
                   </button>
-                  <button 
+                  <button
                     className="btn btn-reject"
                     onClick={() => handleVerify(doc.id, false, 'Document rejected by admin')}
                   >
@@ -235,9 +236,9 @@ function DocumentVerification({ onUpdate }) {
             </div>
             <div className="modal-body">
               {selectedDoc.document_url?.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                <img src={selectedDoc.document_url} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} />
+                <img src={assetUrl(selectedDoc.document_url)} alt="Document" style={{ maxWidth: '100%', maxHeight: '70vh' }} />
               ) : (
-                <iframe src={selectedDoc.document_url} title="Document Preview" style={{ width: '100%', height: '70vh', border: 'none', background: '#f5f5f5' }} />
+                <iframe src={assetUrl(selectedDoc.document_url)} title="Document Preview" style={{ width: '100%', height: '70vh', border: 'none', background: '#f5f5f5' }} />
               )}
             </div>
             <div className="modal-footer">
