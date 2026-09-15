@@ -6,6 +6,7 @@ import { useSocket } from '../context/SocketContext';
 import { useLocation } from 'react-router-dom';
 import { playNotificationSound } from '../utils/sounds';
 import API from '../api/axios';
+import Avatar from './Avatar';
 
 function Header() {
   const { user } = useAuth();
@@ -19,14 +20,11 @@ function Header() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
-  // ✅ Derive unread count from the list. This is the single source of
-  //    truth, so a duplicate insert can never make the badge wrong.
   const unreadCount = useMemo(
     () => notifications.filter(n => !n.is_read).length,
     [notifications]
   );
 
-  // Live clock
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -59,7 +57,6 @@ function Header() {
 
   const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
-  // ── Fetch notifications ────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
 
@@ -83,14 +80,10 @@ function Header() {
     return () => { cancelled = true; };
   }, [user?.id, location.pathname]);
 
-  // ── Socket.IO live updates ─────────────────────────────────
   useEffect(() => {
     if (!socket) return;
 
     const handleNotif = (notif) => {
-      // ✅ Dedup by id: if this notification is already in the list
-      //    (e.g. we just refetched after a route change), don't add it
-      //    again and don't play the sound twice.
       setNotifications((prev) => {
         if (prev.some(n => n.id === notif.id)) return prev;
         playNotificationSound();
@@ -102,7 +95,6 @@ function Header() {
     return () => socket.off('notification:new', handleNotif);
   }, [socket]);
 
-  // ── Close dropdown on outside click ────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) {
@@ -186,9 +178,7 @@ function Header() {
 
         {user && (
           <div className="header-user">
-            <div className="header-avatar">
-              {user.first_name?.[0]}{user.last_name?.[0]}
-            </div>
+            <Avatar user={user} size={36} />
           </div>
         )}
       </div>

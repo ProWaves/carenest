@@ -30,7 +30,6 @@ async function checkAndApplySuspension(userId) {
   const warnings = await getUserWarnings(userId);
 
   if (warnings.count >= 3) {
-    // Auto-suspend for 7 days
     const suspensionEnd = new Date();
     suspensionEnd.setDate(suspensionEnd.getDate() + 7);
 
@@ -52,7 +51,6 @@ async function checkAndApplySuspension(userId) {
       '/dashboard'
     );
 
-    // Notify admins
     const admins = await db.query("SELECT id FROM users WHERE role = 'admin' AND is_active = true");
     for (const admin of admins.rows) {
       await createNotification(
@@ -71,7 +69,7 @@ async function checkAndApplySuspension(userId) {
 }
 
 // ============================================
-// TEST ENDPOINT - Check if route is working
+// TEST ENDPOINT
 // ============================================
 router.get('/ping', (req, res) => {
   console.log('✅ Admin route pinged!');
@@ -114,16 +112,9 @@ router.get('/stats', async (req, res) => {
       db.query("SELECT COUNT(*) as count FROM users WHERE role = 'parent' AND suspended_at IS NULL"),
       db.query("SELECT COUNT(*) as count FROM users WHERE role = 'babysitter' AND suspended_at IS NULL"),
       db.query("SELECT COUNT(*) as count FROM babysitter_profiles WHERE status = 'pending'"),
-      // ✅ FIX: count only documents that have NOT been reviewed yet.
-      //         A document with a rejection_reason has already been seen
-      //         by an admin and is awaiting resubmission — it should not
-      //         show up as "pending review" on the dashboard.
       db.query("SELECT COUNT(*) as count FROM babysitter_documents WHERE is_verified = false AND (rejection_reason IS NULL OR rejection_reason = '')"),
       db.query('SELECT COUNT(*) as count FROM bookings'),
       db.query("SELECT COUNT(*) as count FROM bookings WHERE status = 'completed'"),
-      // ✅ FIX: include 'confirmed' bookings alongside 'in_progress'.
-      //         The frontend's "Active" segment on the donut chart now
-      //         matches what most admins consider active.
       db.query("SELECT COUNT(*) as count FROM bookings WHERE status IN ('confirmed', 'in_progress')"),
       db.query("SELECT COUNT(*) as count FROM bookings WHERE status = 'cancelled'"),
       db.query("SELECT COALESCE(SUM(total_amount), 0) as total FROM bookings WHERE status = 'completed'"),
@@ -138,11 +129,12 @@ router.get('/stats', async (req, res) => {
         ORDER BY month DESC
       `),
       db.query(`
-        SELECT u.id, u.first_name, u.last_name, COUNT(b.id) as completed, COALESCE(SUM(b.total_amount), 0) as revenue
+        SELECT u.id, u.first_name, u.last_name, u.avatar_url,
+               COUNT(b.id) as completed, COALESCE(SUM(b.total_amount), 0) as revenue
         FROM users u
         JOIN bookings b ON b.babysitter_id = u.id
         WHERE b.status = 'completed'
-        GROUP BY u.id, u.first_name, u.last_name
+        GROUP BY u.id, u.first_name, u.last_name, u.avatar_url
         ORDER BY revenue DESC
         LIMIT 10
       `),
@@ -157,7 +149,9 @@ router.get('/stats', async (req, res) => {
       db.query(`
         SELECT b.id, b.status, b.total_amount, b.created_at,
           p.first_name as pfirst, p.last_name as plast,
-          s.first_name as sfirst, s.last_name as slast
+          p.avatar_url as pavatar,
+          s.first_name as sfirst, s.last_name as slast,
+          s.avatar_url as savatar
         FROM bookings b
         JOIN users p ON p.id = b.parent_id
         JOIN users s ON s.id = b.babysitter_id
@@ -202,7 +196,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // ============================================
-// LIVE STATS (Real-time updates)
+// LIVE STATS
 // ============================================
 router.get('/live-stats', async (req, res) => {
   try {
@@ -247,6 +241,7 @@ router.get('/babysitters', async (req, res) => {
 
     let query = `
       SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.city, u.language, u.gender,
+        u.avatar_url,
         bp.bio, bp.experience_years, bp.hourly_rate, bp.status, bp.is_verified, bp.skills,
         bp.emergency_contact_name, bp.emergency_contact_phone,
         (SELECT COUNT(*) FROM bookings WHERE babysitter_id = u.id AND status = 'completed') as completed_bookings,
@@ -352,7 +347,6 @@ router.put('/babysitters/:id/status', async (req, res) => {
       '/dashboard'
     );
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
@@ -366,7 +360,7 @@ router.put('/babysitters/:id/status', async (req, res) => {
   }
 });
 
-// DELETE BABYSITTER (Admin removes)
+// DELETE BABYSITTER
 router.delete('/babysitters/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -380,10 +374,8 @@ router.delete('/babysitters/:id', async (req, res) => {
       return res.status(404).json({ error: 'Babysitter not found.' });
     }
 
-    // Delete user (cascades to all related tables)
     await db.query('DELETE FROM users WHERE id = $1', [id]);
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
@@ -411,7 +403,8 @@ router.get('/documents', async (req, res) => {
         u.first_name, 
         u.last_name, 
         u.email, 
-        u.phone, 
+        u.phone,
+        u.avatar_url,
         bp.hourly_rate, 
         bp.experience_years,
         bp.id as profile_id
@@ -421,7 +414,6 @@ router.get('/documents', async (req, res) => {
       WHERE 1=1
     `;
     const params = [];
-    let paramIndex = 1;
 
     if (status === 'pending') {
       query += ` AND d.is_verified = false AND (d.rejection_reason IS NULL OR d.rejection_reason = '')`;
@@ -473,7 +465,6 @@ router.put('/documents/:id/verify', async (req, res) => {
       [is_verified, is_verified ? null : rejection_reason, admin_notes, id]
     );
 
-    // Create notification for babysitter
     if (!is_verified && rejection_reason) {
       await createNotification(
         doc.user_id,
@@ -492,7 +483,6 @@ router.put('/documents/:id/verify', async (req, res) => {
       );
     }
 
-    // Check if all documents are verified
     if (is_verified) {
       const pendingDocs = await db.query(
         'SELECT COUNT(*) as count FROM babysitter_documents WHERE babysitter_id = $1 AND is_verified = false',
@@ -515,7 +505,6 @@ router.put('/documents/:id/verify', async (req, res) => {
       }
     }
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
@@ -548,7 +537,6 @@ router.post('/documents/:id/request-revision', async (req, res) => {
       return res.status(404).json({ error: 'Document not found.' });
     }
 
-    // Create revision record
     await db.query(
       `INSERT INTO document_revisions (document_id, requested_by, revision_notes, status) 
        VALUES ($1, $2, $3, 'pending')`,
@@ -572,7 +560,6 @@ router.post('/documents/:id/request-revision', async (req, res) => {
       );
     }
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
@@ -587,7 +574,7 @@ router.post('/documents/:id/request-revision', async (req, res) => {
 });
 
 // ============================================
-// USER MANAGEMENT (with Suspension)
+// USER MANAGEMENT
 // ============================================
 router.get('/users', async (req, res) => {
   try {
@@ -659,7 +646,6 @@ router.put('/users/:id/suspend', async (req, res) => {
 
     const user = result.rows[0];
 
-    // Notify user
     await createNotification(
       parseInt(id),
       suspend ? 'account_suspended' : 'account_restored',
@@ -670,7 +656,6 @@ router.put('/users/:id/suspend', async (req, res) => {
       '/dashboard'
     );
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
@@ -698,7 +683,9 @@ router.get('/bookings', async (req, res) => {
     let query = `
       SELECT b.*, 
         p.first_name as parent_first_name, p.last_name as parent_last_name, p.email as parent_email,
+        p.avatar_url as parent_avatar_url,
         s.first_name as babysitter_first_name, s.last_name as babysitter_last_name, s.email as babysitter_email,
+        s.avatar_url as babysitter_avatar_url,
         c.name as child_name,
         b.cancellation_reason,
         u_canceller.first_name as cancelled_by_first_name, u_canceller.last_name as cancelled_by_last_name
@@ -748,7 +735,7 @@ router.get('/bookings', async (req, res) => {
 });
 
 // ============================================
-// REPORTS MANAGEMENT (with Warnings)
+// REPORTS MANAGEMENT
 // ============================================
 router.get('/reports', async (req, res) => {
   try {
@@ -758,7 +745,9 @@ router.get('/reports', async (req, res) => {
     let query = `
       SELECT r.*, 
         rep.first_name as reporter_first_name, rep.last_name as reporter_last_name, rep.email as reporter_email,
+        rep.avatar_url as reporter_avatar_url,
         u.first_name as reported_first_name, u.last_name as reported_last_name, u.email as reported_email,
+        u.avatar_url as reported_avatar_url,
         rep.role as reporter_role, u.role as reported_role,
         r.admin_notes
       FROM reports r
@@ -784,7 +773,7 @@ router.get('/reports', async (req, res) => {
   }
 });
 
-// UPDATED: PUT /admin/reports/:id/status - With warning handling
+// PUT /admin/reports/:id/status
 router.put('/reports/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
@@ -794,7 +783,6 @@ router.put('/reports/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Invalid status.' });
     }
 
-    // Get report details
     const report = await db.query(
       `SELECT r.*, u.id as user_id, u.first_name, u.last_name, u.email, u.role
        FROM reports r
@@ -809,7 +797,6 @@ router.put('/reports/:id/status', async (req, res) => {
 
     const reportData = report.rows[0];
 
-    // Update report
     const result = await db.query(
       `UPDATE reports 
        SET status = $1, 
@@ -821,14 +808,11 @@ router.put('/reports/:id/status', async (req, res) => {
       [status, admin_notes, admin_action, id]
     );
 
-    // If warning was issued, check for auto-suspension
     if (admin_action === 'warning') {
       const warnings = await getUserWarnings(reportData.user_id);
 
       if (warnings.count >= 3) {
-        const suspensionResult = await checkAndApplySuspension(reportData.user_id);
-
-        // Add suspension info to response
+        await checkAndApplySuspension(reportData.user_id);
         result.rows[0].autoSuspended = true;
         result.rows[0].suspensionDuration = 7;
       } else {
@@ -837,7 +821,6 @@ router.put('/reports/:id/status', async (req, res) => {
       }
     }
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
@@ -858,7 +841,7 @@ router.get('/activity-log', async (req, res) => {
   try {
     const { limit = 50, action } = req.query;
     let query = `
-      SELECT l.*, u.first_name, u.last_name, u.email
+      SELECT l.*, u.first_name, u.last_name, u.email, u.avatar_url
       FROM admin_activity_log l
       JOIN users u ON u.id = l.admin_id
       WHERE 1=1
@@ -892,7 +875,9 @@ router.get('/reviews/all', async (req, res) => {
     const result = await db.query(`
       SELECT r.*, 
         p.first_name as parent_first_name, p.last_name as parent_last_name,
+        p.avatar_url as parent_avatar_url,
         s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+        s.avatar_url as babysitter_avatar_url,
         b.start_date, b.end_date
       FROM reviews r
       JOIN users p ON p.id = r.parent_id
@@ -915,7 +900,9 @@ router.get('/parent-reviews', async (req, res) => {
     const result = await db.query(`
       SELECT pr.*, 
         p.first_name as parent_first_name, p.last_name as parent_last_name,
+        p.avatar_url as parent_avatar_url,
         s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+        s.avatar_url as babysitter_avatar_url,
         b.start_date, b.end_date
       FROM parent_reviews pr
       JOIN users p ON p.id = pr.parent_id
@@ -997,7 +984,6 @@ router.post('/notifications', async (req, res) => {
 // JOB STATS
 // ============================================
 
-// GET /admin/jobs/stats - Get job statistics
 router.get('/jobs/stats', async (req, res) => {
   try {
     const stats = await db.query(`
@@ -1029,7 +1015,6 @@ router.get('/jobs/stats', async (req, res) => {
       JOIN job_posts j ON j.parent_id = b.parent_id AND j.selected_babysitter_id = b.babysitter_id
     `);
 
-    // Monthly trends
     const monthly = await db.query(`
       SELECT TO_CHAR(created_at, 'YYYY-MM') as month, COUNT(*) as count
       FROM job_posts
@@ -1038,23 +1023,21 @@ router.get('/jobs/stats', async (req, res) => {
       ORDER BY month DESC
     `);
 
-    // Top parents by jobs posted
     const topParents = await db.query(`
-      SELECT u.id, u.first_name, u.last_name, COUNT(j.id) as jobs_posted
+      SELECT u.id, u.first_name, u.last_name, u.avatar_url, COUNT(j.id) as jobs_posted
       FROM users u
       JOIN job_posts j ON j.parent_id = u.id
-      GROUP BY u.id, u.first_name, u.last_name
+      GROUP BY u.id, u.first_name, u.last_name, u.avatar_url
       ORDER BY jobs_posted DESC
       LIMIT 10
     `);
 
-    // Top babysitters by jobs completed
     const topBabysitters = await db.query(`
-      SELECT u.id, u.first_name, u.last_name, COUNT(j.id) as jobs_completed
+      SELECT u.id, u.first_name, u.last_name, u.avatar_url, COUNT(j.id) as jobs_completed
       FROM users u
       JOIN job_posts j ON j.selected_babysitter_id = u.id
       WHERE j.status = 'completed'
-      GROUP BY u.id, u.first_name, u.last_name
+      GROUP BY u.id, u.first_name, u.last_name, u.avatar_url
       ORDER BY jobs_completed DESC
       LIMIT 10
     `);
@@ -1082,7 +1065,9 @@ router.get('/jobs', async (req, res) => {
     let query = `
       SELECT j.*,
         p.first_name as parent_first_name, p.last_name as parent_last_name, p.email as parent_email,
+        p.avatar_url as parent_avatar_url,
         b.first_name as babysitter_first_name, b.last_name as babysitter_last_name,
+        b.avatar_url as babysitter_avatar_url,
         (SELECT COUNT(*) FROM job_applications WHERE job_post_id = j.id) as application_count
       FROM job_posts j
       LEFT JOIN users p ON p.id = j.parent_id
@@ -1123,7 +1108,6 @@ router.get('/jobs', async (req, res) => {
 // ANALYTICS ENDPOINTS
 // ============================================
 
-// GET /admin/analytics/user-growth - Monthly user signups for last 12 months
 router.get('/analytics/user-growth', async (req, res) => {
   try {
     const result = await db.query(`
@@ -1144,7 +1128,6 @@ router.get('/analytics/user-growth', async (req, res) => {
   }
 });
 
-// GET /admin/analytics/rating-distribution - Rating histogram
 router.get('/analytics/rating-distribution', async (req, res) => {
   try {
     const result = await db.query(`
@@ -1167,7 +1150,6 @@ router.get('/analytics/rating-distribution', async (req, res) => {
   }
 });
 
-// GET /admin/analytics/revenue-trend - Daily revenue for last 30 days
 router.get('/analytics/revenue-trend', async (req, res) => {
   try {
     const result = await db.query(`
@@ -1202,7 +1184,6 @@ router.get('/analytics/revenue-trend', async (req, res) => {
   }
 });
 
-// GET /admin/analytics/platform-health - Quick health metrics
 router.get('/analytics/platform-health', async (req, res) => {
   try {
     const [
@@ -1300,7 +1281,6 @@ router.put('/locations/:userId/toggle', async (req, res) => {
       return res.status(400).json({ error: 'is_sharing is required.' });
     }
 
-    // Check if user exists and is a babysitter
     const userCheck = await db.query(
       'SELECT id, first_name, last_name, email FROM users WHERE id = $1 AND role = $2',
       [userId, 'babysitter']
@@ -1310,13 +1290,11 @@ router.put('/locations/:userId/toggle', async (req, res) => {
       return res.status(404).json({ error: 'Babysitter not found.' });
     }
 
-    // Update profile share_location
     await db.query(
       'UPDATE babysitter_profiles SET share_location = $1 WHERE user_id = $2',
       [is_sharing, userId]
     );
 
-    // Update user_locations
     await db.query(
       `UPDATE user_locations 
        SET is_sharing = $1, location_updated_at = CURRENT_TIMESTAMP
@@ -1324,7 +1302,6 @@ router.put('/locations/:userId/toggle', async (req, res) => {
       [is_sharing, userId]
     );
 
-    // Log admin action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
@@ -1332,7 +1309,6 @@ router.put('/locations/:userId/toggle', async (req, res) => {
        JSON.stringify({ is_sharing, babysitter: userCheck.rows[0].first_name + ' ' + userCheck.rows[0].last_name })]
     );
 
-    // Notify babysitter
     await createNotification(
       parseInt(userId),
       'location_sharing_updated',

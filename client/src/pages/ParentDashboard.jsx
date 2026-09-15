@@ -10,6 +10,7 @@ import Rating from '../components/Rating';
 import AIChatbot from '../components/AIChatbot';
 import ReportModal from '../components/ReportModal';
 import StatDetailModal from '../components/StatDetailModal';
+import Avatar from '../components/Avatar';
 
 function ParentDashboard() {
   const { user } = useAuth();
@@ -27,12 +28,10 @@ function ParentDashboard() {
   const [showAIChat, setShowAIChat] = useState(false);
   const [reviewModal, setReviewModal] = useState({ open: false, booking: null });
   const [reviewData, setReviewData] = useState({ rating: 0, comment: '' });
-  
-  // Report state
+
   const [showReportModal, setShowReportModal] = useState(false);
   const [selectedBookingForReport, setSelectedBookingForReport] = useState(null);
 
-  // ✅ Drill-down modal state
   const [detailModal, setDetailModal] = useState({ open: false, type: null });
 
   useEffect(() => {
@@ -51,7 +50,7 @@ function ParentDashboard() {
       setChildren(childrenRes.data);
       setFavorites(favoritesRes.data);
       setReceivedReviews(reviewsRes.data);
-      
+
       if (bookingsRes.data.length > 0) {
         calculateSpending(bookingsRes.data);
       }
@@ -67,18 +66,15 @@ function ParentDashboard() {
     const average = completed.length > 0 ? total / completed.length : 0;
     const months = {};
     const recent = [...bookingsData].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
-    
+
     completed.forEach((b) => {
       const m = new Date(b.created_at).toLocaleString('default', { month: 'short', year: 'numeric' });
       months[m] = (months[m] || 0) + parseFloat(b.total_amount || 0);
     });
-    
+
     setSpending({ total, average, monthly: Object.entries(months), recent });
   };
 
-  // ============================================
-  // DRILL-DOWN HELPERS
-  // ============================================
   const getDetailRows = (type) => {
     const completed = bookings.filter(b => b.status === 'completed');
     switch (type) {
@@ -119,7 +115,17 @@ function ParentDashboard() {
     { key: 'id', label: 'ID', render: (b) => `#${b.id}` },
     {
       key: 'babysitter', label: 'Babysitter',
-      render: (b) => `${b.babysitter_first_name || ''} ${b.babysitter_last_name || ''}`.trim() || '—',
+      render: (b) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Avatar
+            avatarUrl={b.babysitter_avatar_url}
+            firstName={b.babysitter_first_name}
+            lastName={b.babysitter_last_name}
+            size={28}
+          />
+          <span>{`${b.babysitter_first_name || ''} ${b.babysitter_last_name || ''}`.trim() || '—'}</span>
+        </div>
+      ),
     },
     {
       key: 'date', label: 'Date',
@@ -158,12 +164,9 @@ function ParentDashboard() {
     },
   ];
 
-  // ============================================
-  // BOOKING ACTION FUNCTIONS
-  // ============================================
   const deleteBooking = async (id) => {
     if (!window.confirm('Are you sure you want to permanently delete this booking? This action cannot be undone.')) return;
-    
+
     try {
       await API.delete(`/bookings/${id}`);
       setBookings(bookings.filter((b) => b.id !== id));
@@ -182,9 +185,6 @@ function ParentDashboard() {
     navigate(`/babysitters/${babysitterId}/book`);
   };
 
-  // ============================================
-  // EXISTING FUNCTIONS
-  // ============================================
   const addChild = async (e) => {
     e.preventDefault();
     try {
@@ -242,12 +242,12 @@ function ParentDashboard() {
   };
 
   const statusClass = (s) => {
-    const map = { 
-      pending: 'status-pending', 
-      confirmed: 'status-confirmed', 
-      in_progress: 'status-progress', 
-      completed: 'status-completed', 
-      cancelled: 'status-cancelled' 
+    const map = {
+      pending: 'status-pending',
+      confirmed: 'status-confirmed',
+      in_progress: 'status-progress',
+      completed: 'status-completed',
+      cancelled: 'status-cancelled'
     };
     return map[s] || '';
   };
@@ -297,9 +297,7 @@ function ParentDashboard() {
         </button>
       </div>
 
-      {/* ============================================
-          BOOKINGS TAB
-          ============================================ */}
+      {/* BOOKINGS TAB */}
       {activeTab === 'bookings' && (
         <div className="dash-content">
           {bookings.length === 0 ? (
@@ -316,12 +314,17 @@ function ParentDashboard() {
                 const isCompleted = status === 'completed';
                 const isCancelled = status === 'cancelled' || status === 'canceled';
                 const isPending = status === 'pending';
-                
+
                 return (
                   <div key={b.id} className="booking-item">
                     <div className="booking-main">
                       <div className="booking-person">
-                        <div className="avatar-sm">{b.babysitter_first_name?.[0] || '?'}</div>
+                        <Avatar
+                          avatarUrl={b.babysitter_avatar_url}
+                          firstName={b.babysitter_first_name}
+                          lastName={b.babysitter_last_name}
+                          size={38}
+                        />
                         <div>
                           <strong>{b.babysitter_first_name || 'Unknown'} {b.babysitter_last_name || ''}</strong>
                           {b.child_name && <span className="booking-child">with {b.child_name}</span>}
@@ -339,14 +342,14 @@ function ParentDashboard() {
                         {t(`booking.${b.status}`) || b.status || 'Unknown'}
                       </span>
                     </div>
-                    
+
                     <div className="booking-actions" style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                       {isPending && (
                         <button onClick={() => cancelBooking(b.id)} className="btn btn-sm btn-outline-danger">
                           {t('booking.cancelled')}
                         </button>
                       )}
-                      
+
                       {isCompleted && (
                         <>
                           <button onClick={() => deleteBooking(b.id)} className="btn btn-sm btn-outline-danger" title="Permanently delete">
@@ -366,7 +369,7 @@ function ParentDashboard() {
                           </button>
                         </>
                       )}
-                      
+
                       {isCancelled && (
                         <>
                           <button onClick={() => deleteBooking(b.id)} className="btn btn-sm btn-outline-danger" title="Permanently delete">
@@ -392,9 +395,7 @@ function ParentDashboard() {
         </div>
       )}
 
-      {/* ============================================
-          REVIEWS TAB
-          ============================================ */}
+      {/* REVIEWS TAB */}
       {activeTab === 'reviews' && (
         <div className="dash-content">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
@@ -424,15 +425,12 @@ function ParentDashboard() {
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{
-                        width: 40, height: 40, borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                        color: 'white',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: '700', fontSize: '0.85rem',
-                      }}>
-                        {review.first_name?.[0] || '?'}{review.last_name?.[0] || ''}
-                      </div>
+                      <Avatar
+                        avatarUrl={review.avatar_url}
+                        firstName={review.first_name}
+                        lastName={review.last_name}
+                        size={40}
+                      />
                       <div>
                         <div style={{ fontWeight: '600', fontSize: '0.92rem' }}>
                           {review.first_name || 'Anonymous'} {review.last_name || ''}
@@ -458,7 +456,7 @@ function ParentDashboard() {
         </div>
       )}
 
-      {/* Spending Tab — clickable cards */}
+      {/* Spending Tab */}
       {activeTab === 'spending' && (
         <div className="dash-content">
           <div className="stats-grid admin-stats" style={{ marginBottom: 20 }}>
@@ -536,7 +534,12 @@ function ParentDashboard() {
                   >
                     <div className="booking-main">
                       <div className="booking-person">
-                        <div className="avatar-sm">{b.babysitter_first_name?.[0]}</div>
+                        <Avatar
+                          avatarUrl={b.babysitter_avatar_url}
+                          firstName={b.babysitter_first_name}
+                          lastName={b.babysitter_last_name}
+                          size={38}
+                        />
                         <div>
                           <strong>{b.babysitter_first_name} {b.babysitter_last_name}</strong>
                           <span className="booking-child">{new Date(b.created_at).toLocaleDateString()}</span>
@@ -613,7 +616,7 @@ function ParentDashboard() {
               {favorites.map((s) => (
                 <Link to={`/babysitters/${s.id}`} key={s.id} className="babysitter-card">
                   <div className="babysitter-card-header">
-                    <div className="avatar">{s.first_name[0]}{s.last_name[0]}</div>
+                    <Avatar user={s} size={52} />
                     {s.is_verified && <span className="badge badge-success">{String.fromCodePoint(10003)}</span>}
                   </div>
                   <h3>{s.first_name} {s.last_name}</h3>
@@ -677,7 +680,6 @@ function ParentDashboard() {
         />
       )}
 
-      {/* ✅ Drill-Down Modal */}
       <StatDetailModal
         isOpen={detailModal.open}
         onClose={() => setDetailModal({ open: false, type: null })}

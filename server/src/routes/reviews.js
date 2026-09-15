@@ -60,6 +60,7 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 router.get('/babysitter/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    // ✅ u.avatar_url included so reviewer photos render
     const result = await db.query(
       `SELECT r.rating, r.comment, r.created_at,
         u.first_name, u.last_name, u.avatar_url
@@ -88,10 +89,10 @@ router.get('/received', authenticate, async (req, res) => {
     let rows = [];
 
     if (role === 'babysitter') {
-      // Reviews a babysitter received from parents
+      // ✅ Reviews a babysitter received from parents — include parent's avatar
       const result = await db.query(
         `SELECT r.id, r.rating, r.comment, r.created_at,
-                u.first_name, u.last_name
+                u.first_name, u.last_name, u.avatar_url
          FROM reviews r
          JOIN users u ON u.id = r.parent_id
          WHERE r.babysitter_id = $1
@@ -100,10 +101,10 @@ router.get('/received', authenticate, async (req, res) => {
       );
       rows = result.rows;
     } else if (role === 'parent') {
-      // Reviews a parent received from babysitters
+      // ✅ Reviews a parent received from babysitters — include sitter's avatar
       const result = await db.query(
         `SELECT r.id, r.rating, r.comment, r.created_at,
-                u.first_name, u.last_name
+                u.first_name, u.last_name, u.avatar_url
          FROM parent_reviews r
          JOIN users u ON u.id = r.babysitter_id
          WHERE r.parent_id = $1
@@ -128,7 +129,9 @@ router.get('/admin/all', authenticate, authorize('admin'), async (req, res) => {
     const result = await db.query(`
       SELECT r.*, 
         p.first_name as parent_first_name, p.last_name as parent_last_name,
+        p.avatar_url as parent_avatar_url,
         s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+        s.avatar_url as babysitter_avatar_url,
         b.start_date, b.end_date
       FROM reviews r
       JOIN users p ON p.id = r.parent_id
@@ -151,7 +154,9 @@ router.get('/admin/parent-reviews', authenticate, authorize('admin'), async (req
     const result = await db.query(`
       SELECT pr.*, 
         p.first_name as parent_first_name, p.last_name as parent_last_name,
+        p.avatar_url as parent_avatar_url,
         s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+        s.avatar_url as babysitter_avatar_url,
         b.start_date, b.end_date
       FROM parent_reviews pr
       JOIN users p ON p.id = pr.parent_id
@@ -175,6 +180,7 @@ router.get('/my-reviews', authenticate, async (req, res) => {
     if (req.user.role === 'parent') {
       query = `
         SELECT r.*, s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+               s.avatar_url as babysitter_avatar_url,
                b.start_date, b.end_date
         FROM reviews r
         JOIN users s ON s.id = r.babysitter_id
@@ -186,6 +192,7 @@ router.get('/my-reviews', authenticate, async (req, res) => {
     } else if (req.user.role === 'babysitter') {
       query = `
         SELECT r.*, p.first_name as parent_first_name, p.last_name as parent_last_name,
+               p.avatar_url as parent_avatar_url,
                b.start_date, b.end_date
         FROM reviews r
         JOIN users p ON p.id = r.parent_id

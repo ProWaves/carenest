@@ -3,6 +3,7 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import Avatar from './Avatar';
 
 function Sidebar() {
   const { user, logout } = useAuth();
@@ -25,11 +26,9 @@ function Sidebar() {
     navigate('/');
   };
 
-  // Navigation items based on user role
   const getNavItems = () => {
     const items = [];
 
-    // Home - always show
     items.push({
       path: '/',
       icon: '🏠',
@@ -37,7 +36,6 @@ function Sidebar() {
       show: true,
     });
 
-    // Role-based "Find" link
     if (user?.role === 'babysitter') {
       items.push({
         path: '/jobs',
@@ -55,7 +53,6 @@ function Sidebar() {
     }
 
     if (user) {
-      // Dashboard
       items.push({
         path: '/dashboard',
         icon: '📊',
@@ -63,7 +60,6 @@ function Sidebar() {
         show: true,
       });
 
-      // Parent: My Jobs
       if (user.role === 'parent') {
         items.push({
           path: '/jobs/parent',
@@ -79,7 +75,6 @@ function Sidebar() {
         });
       }
 
-      // Babysitter: My Applications
       if (user.role === 'babysitter') {
         items.push({
           path: '/jobs/applications',
@@ -89,7 +84,6 @@ function Sidebar() {
         });
       }
 
-      // Messages & Profile
       if (user.role === 'parent' || user.role === 'babysitter') {
         items.push({
           path: '/messages',
@@ -113,7 +107,6 @@ function Sidebar() {
 
   return (
     <aside className="sidebar">
-      {/* Logo */}
       <div className="sidebar-logo">
         <Link to="/">
           <span className="logo-icon">◈</span>
@@ -121,7 +114,6 @@ function Sidebar() {
         </Link>
       </div>
 
-      {/* Navigation */}
       <nav className="sidebar-nav">
         {navItems.map((item) => (
           item.show && (
@@ -137,9 +129,7 @@ function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom section */}
       <div className="sidebar-bottom">
-        {/* Language Switcher */}
         <div className="sidebar-lang">
           <button
             className={`lang-btn ${lang === 'en' ? 'active' : ''}`}
@@ -155,12 +145,9 @@ function Sidebar() {
           </button>
         </div>
 
-        {/* User section */}
         {user ? (
           <div className="sidebar-user">
-            <div className="sidebar-user-avatar">
-              {user.first_name?.[0]}{user.last_name?.[0]}
-            </div>
+            <Avatar user={user} size={36} />
             <div className="sidebar-user-info">
               <span className="sidebar-user-name">
                 {user.first_name} {user.last_name}

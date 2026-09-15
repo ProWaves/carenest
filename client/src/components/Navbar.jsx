@@ -6,6 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useSocket } from '../context/SocketContext';
 import { playNotificationSound } from '../utils/sounds';
 import API from '../api/axios';
+import Avatar from './Avatar';
 
 function Navbar() {
   const { user, logout } = useAuth();
@@ -20,7 +21,6 @@ function Navbar() {
 
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
-  // ✅ Derive unread from the list — single source of truth.
   const unreadCount = useMemo(
     () => notifications.filter(n => !n.is_read).length,
     [notifications]
@@ -33,7 +33,6 @@ function Navbar() {
 
   const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
 
-  // ── Fetch notifications ────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
 
@@ -57,12 +56,10 @@ function Navbar() {
     return () => { cancelled = true; };
   }, [user?.id, location.pathname]);
 
-  // ── Socket.IO live updates ─────────────────────────────────
   useEffect(() => {
     if (!socket) return;
 
     const handleNotif = (notif) => {
-      // ✅ Dedup by id.
       setNotifications((prev) => {
         if (prev.some(n => n.id === notif.id)) return prev;
         playNotificationSound();
@@ -74,7 +71,6 @@ function Navbar() {
     return () => socket.off('notification:new', handleNotif);
   }, [socket]);
 
-  // ── Close dropdown on outside click ────────────────────────
   useEffect(() => {
     const handler = (e) => {
       if (notifRef.current && !notifRef.current.contains(e.target)) {
@@ -169,7 +165,6 @@ function Navbar() {
                 </Link>
               )}
 
-              {/* Notification Bell */}
               <div style={{ position: 'relative' }} ref={notifRef}>
                 <button className="notif-bell" onClick={() => setNotifOpen(!notifOpen)}>
                   {String.fromCodePoint(128276)}
@@ -203,7 +198,7 @@ function Navbar() {
               <button onClick={handleLogout} className="nav-link btn-link">{t('nav.logout')}</button>
 
               <div className="nav-user">
-                <div className="avatar-mini">{user.first_name?.[0]}</div>
+                <Avatar user={user} size={30} />
                 <span>{user.first_name}</span>
                 <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
                   ({user.role})

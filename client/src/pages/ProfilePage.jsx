@@ -1,3 +1,4 @@
+// client/src/pages/ProfilePage.jsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import API from '../api/axios';
@@ -7,14 +8,7 @@ import { useToast } from '../components/Toast';
 import PhoneInput from '../components/PhoneInput';
 import BackButton from '../components/BackButton';
 import AIChatbot from '../components/AIChatbotGate';
-
-// ✅ Strip the trailing "/api" from VITE_API_URL so we can build absolute
-//    URLs for static assets served from the backend (e.g. /uploads/*).
-//    - Production:  VITE_API_URL=https://sitterspot-backend.onrender.com/api
-//                   → ASSET_BASE=https://sitterspot-backend.onrender.com
-//    - Local dev:   VITE_API_URL=/api
-//                   → ASSET_BASE="" (Vite proxies /uploads to the backend)
-const ASSET_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
+import Avatar from '../components/Avatar';
 
 function ProfilePage() {
   const { user, setUser } = useAuth();
@@ -72,8 +66,11 @@ function ProfilePage() {
     setError('');
     try {
       const res = await API.put('/users/profile', form);
-      setUser(res.data);
-      localStorage.setItem('user', JSON.stringify(res.data));
+      // MERGE the response into the current user so we don't wipe
+      // avatar_url or anything else the server didn't echo back.
+      const merged = { ...user, ...res.data };
+      setUser(merged);
+      localStorage.setItem('user', JSON.stringify(merged));
       addToast('Profile updated!', 'success');
     } catch (err) {
       addToast(err.response?.data?.error || t('common.error'), 'error');
@@ -105,8 +102,10 @@ function ProfilePage() {
         const res = await API.post('/users/avatar', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
-        setUser({ ...user, avatar_url: res.data.avatar_url });
-        localStorage.setItem('user', JSON.stringify({ ...user, avatar_url: res.data.avatar_url }));
+        // Merge — never replace
+        const merged = { ...user, avatar_url: res.data.avatar_url };
+        setUser(merged);
+        localStorage.setItem('user', JSON.stringify(merged));
         addToast('Avatar updated!', 'success');
       } catch (err) {
         addToast('Error uploading avatar', 'error');
@@ -178,18 +177,24 @@ function ProfilePage() {
       <div className="profile-page">
         <div className="profile-hero">
           <div className="profile-hero-bg" />
-          <div className="profile-hero-avatar-wrap" onClick={uploadAvatar}>
-            {user?.avatar_url ? (
-              <img
-                src={`${ASSET_BASE}${user.avatar_url}`}
-                alt=""
-                className="profile-hero-avatar-img"
-              />
-            ) : (
-              <div className="profile-hero-avatar">
-                {user?.first_name?.[0]}{user?.last_name?.[0]}
-              </div>
-            )}
+
+          {/* ✅ Avatar now uses the shared <Avatar> component, which resolves
+              relative /uploads/... paths via assetUrl() and falls back to
+              gradient initials when there's no avatar_url. */}
+          <div
+            className="profile-hero-avatar-wrap"
+            onClick={uploadAvatar}
+            style={{ cursor: 'pointer' }}
+          >
+            <Avatar
+              user={user}
+              size={110}
+              shape="circle"
+              style={{
+                border: '4px solid var(--color-surface)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+              }}
+            />
             <div className="profile-hero-avatar-edit">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
@@ -197,6 +202,7 @@ function ProfilePage() {
               </svg>
             </div>
           </div>
+
           <div className="profile-hero-info">
             <h2>{user?.first_name} {user?.last_name}</h2>
             <p>{user?.email}</p>

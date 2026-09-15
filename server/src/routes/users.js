@@ -80,6 +80,19 @@ router.post('/avatar', authenticate, upload.single('avatar'), async (req, res) =
   }
 });
 
+// DELETE /api/users/avatar
+// Removes the user's avatar. Note: this only clears the DB reference — the
+// file remains on disk for safety. A cleanup cron job can prune orphans later.
+router.delete('/avatar', authenticate, async (req, res) => {
+  try {
+    await db.query('UPDATE users SET avatar_url = NULL WHERE id = $1', [req.user.id]);
+    res.json({ message: 'Avatar removed.', avatar_url: null });
+  } catch (error) {
+    console.error('Delete avatar error:', error);
+    res.status(500).json({ error: 'Server error.' });
+  }
+});
+
 // POST /api/users/fcm-token
 // Stores the device's FCM token so the backend can push to this user.
 router.post('/fcm-token', authenticate, async (req, res) => {
@@ -91,15 +104,6 @@ router.post('/fcm-token', authenticate, async (req, res) => {
 
     const token = fcm_token.trim();
 
-    // ============================================================
-    // ✅ FIX: validate the FCM token shape before storing it.
-    //
-    // FCM tokens are 150-200 characters of [A-Za-z0-9_\-:].
-    // Anything outside that range is either corrupt, malicious, or
-    // from a client using a different push provider. Storing it
-    // means every future notification will fail silently and the
-    // row will bloat the DB.
-    // ============================================================
     const FCM_TOKEN_RE = /^[A-Za-z0-9_\-:]{100,250}$/;
     if (!FCM_TOKEN_RE.test(token)) {
       return res.status(400).json({
@@ -108,13 +112,6 @@ router.post('/fcm-token', authenticate, async (req, res) => {
       });
     }
 
-    // ============================================================
-    // ✅ FIX: FCM tokens are unique per app install. If the token
-    //         was previously registered to a different user (device
-    //         handed over, account switch, etc.), clear it from
-    //         that user first so the two don't race to receive the
-    //         same pushes.
-    // ============================================================
     await db.query(
       'UPDATE users SET fcm_token = NULL WHERE fcm_token = $1 AND id != $2',
       [token, req.user.id]

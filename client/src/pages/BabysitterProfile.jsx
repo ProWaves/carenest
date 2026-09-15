@@ -7,14 +7,7 @@ import Rating from '../components/Rating';
 import { useToast } from '../components/Toast';
 import AIChatbot from '../components/AIChatbotGate';
 import ReportModal from '../components/ReportModal';
-
-const ASSET_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
-
-const assetUrl = (path) => {
-  if (!path) return '';
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  return `${ASSET_BASE}${path}`;
-};
+import Avatar from '../components/Avatar';
 
 function BabysitterProfile() {
   const { id } = useParams();
@@ -30,11 +23,6 @@ function BabysitterProfile() {
   const [showAIChat, setShowAIChat] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
 
-  // Load profile + favorite status.
-  // NOTE: we intentionally do NOT depend on `addToast` (stable from
-  // ToastProvider via useCallback) or on the whole `user` object (its
-  // identity changes on every AuthProvider render). We only care about
-  // the user's id for the favorite lookup.
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -139,7 +127,7 @@ function BabysitterProfile() {
           animation: 'scaleIn 0.35s var(--ease)',
         }}>
 
-          {/* ── Hero Header ── */}
+          {/* Hero Header */}
           <div style={{
             position: 'relative',
             padding: '28px 32px 28px',
@@ -158,7 +146,6 @@ function BabysitterProfile() {
               background: 'rgba(255,255,255,0.04)',
             }} />
 
-            {/* top row: back + utility */}
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -236,20 +223,19 @@ function BabysitterProfile() {
               </div>
             </div>
 
-            {/* profile info */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px', position: 'relative' }}>
-              <div style={{
-                width: '80px', height: '80px',
-                borderRadius: '22px',
-                background: 'rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(8px)',
-                border: '2px solid rgba(255,255,255,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 'bold', fontSize: '28px',
-                flexShrink: 0,
-              }}>
-                {profile.first_name?.[0]}{profile.last_name?.[0]}
-              </div>
+              {/* ✅ Uses <Avatar> which resolves /uploads/... via assetUrl()
+                  and falls back to gradient initials. */}
+              <Avatar
+                user={profile}
+                size={80}
+                shape="rounded"
+                style={{
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  fontSize: '28px',
+                }}
+              />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '1.4rem', fontWeight: '700' }}>
                   {profile.first_name} {profile.last_name}
@@ -280,7 +266,7 @@ function BabysitterProfile() {
             </div>
           </div>
 
-          {/* ── Action Bar ── */}
+          {/* Action Bar */}
           {user?.role === 'parent' && (
             <div style={{
               display: 'flex',
@@ -396,7 +382,7 @@ function BabysitterProfile() {
             </div>
           )}
 
-          {/* ── AI Chat Panel ── */}
+          {/* AI Chat Panel */}
           {showAIChat && user?.role === 'parent' && (
             <div style={{
               margin: '24px 32px 0',
@@ -431,7 +417,7 @@ function BabysitterProfile() {
             </div>
           )}
 
-          {/* ── Body Content ── */}
+          {/* Body Content */}
           <div style={{ padding: '28px 32px 32px' }}>
 
             {/* Bio & Stats */}
@@ -478,7 +464,6 @@ function BabysitterProfile() {
                 </div>
               )}
 
-              {/* Stats Row */}
               <div style={{
                 display: 'flex',
                 gap: '24px',
@@ -633,7 +618,15 @@ function BabysitterProfile() {
                       border: '1px solid var(--color-border-light)',
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <strong style={{ fontSize: '0.88rem', color: 'var(--color-text)' }}>{r.first_name} {r.last_name}</strong>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <Avatar
+                            avatarUrl={r.avatar_url}
+                            firstName={r.first_name}
+                            lastName={r.last_name}
+                            size={32}
+                          />
+                          <strong style={{ fontSize: '0.88rem', color: 'var(--color-text)' }}>{r.first_name} {r.last_name}</strong>
+                        </div>
                         <Rating value={r.rating} />
                       </div>
                       <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.88rem', margin: 0, lineHeight: '1.6' }}>{r.comment}</p>
@@ -651,7 +644,6 @@ function BabysitterProfile() {
         </div>
       </div>
 
-      {/* Report Modal */}
       {user?.role === 'parent' && (
         <ReportModal
           isOpen={showReportModal}
@@ -665,7 +657,6 @@ function BabysitterProfile() {
         />
       )}
 
-      {/* Lightbox */}
       {lightboxImg && (
         <div className="lightbox-overlay" onClick={() => setLightboxImg(null)}>
           <img

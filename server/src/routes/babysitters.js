@@ -68,6 +68,7 @@ router.get('/', async (req, res) => {
     const countResult = await db.query(countSql, params);
     const total = parseInt(countResult.rows[0].count);
 
+    // ✅ u.avatar_url included so every card can render the sitter's photo
     const selectColumns = `u.id, u.first_name, u.last_name, u.city, u.language, u.gender, u.avatar_url,
         bp.hourly_rate, bp.experience_years, bp.bio, bp.is_verified, bp.skills,
         bp.payment_preference,
@@ -128,6 +129,7 @@ router.get('/nearby', async (req, res) => {
       });
     }
 
+    // ✅ u.avatar_url included so map pins + InfoWindows can render photos
     const result = await db.query(`
       WITH nearby_babysitters AS (
         SELECT 
@@ -348,7 +350,6 @@ router.put('/profile', authenticate, authorize('babysitter'), async (req, res) =
       payment_preference,
     } = req.body;
 
-    // ✅ Validate payment_preference if provided
     if (payment_preference && !['cash', 'online', 'both'].includes(payment_preference)) {
       return res.status(400).json({ error: 'Invalid payment_preference. Must be cash, online, or both.' });
     }
@@ -1235,6 +1236,7 @@ router.get('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Babysitter account is suspended.', message: 'This babysitter account has been suspended.' });
     }
 
+    // ✅ u.avatar_url included so the profile hero can render the photo
     const result = await db.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.city, u.language, u.gender, u.avatar_url,
         bp.bio, bp.experience_years, bp.hourly_rate, bp.is_verified, bp.status, bp.skills,
@@ -1271,8 +1273,9 @@ router.get('/:id', async (req, res) => {
     }
 
     try {
+      // ✅ u.avatar_url included so review rows can render the parent's photo
       const reviews = await db.query(
-        `SELECT r.rating, r.comment, r.created_at, u.first_name, u.last_name
+        `SELECT r.rating, r.comment, r.created_at, u.first_name, u.last_name, u.avatar_url
          FROM reviews r JOIN users u ON u.id = r.parent_id
          WHERE r.babysitter_id = $1 ORDER BY r.created_at DESC`,
         [id]

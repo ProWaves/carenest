@@ -12,12 +12,23 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem('token');
     const saved = localStorage.getItem('user');
     if (token && saved) {
-      setUser(JSON.parse(saved));
+      // Seed with cached user so UI renders immediately
+      try {
+        setUser(JSON.parse(saved));
+      } catch {
+        setUser(null);
+      }
       API.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      // Then refresh from the server and MERGE (never replace) so any
+      // extra fields (avatar_url, wallet, etc.) survive the round-trip.
       API.get('/auth/me')
         .then((res) => {
-          setUser(res.data);
-          localStorage.setItem('user', JSON.stringify(res.data));
+          setUser((prev) => {
+            const merged = { ...(prev || {}), ...res.data };
+            localStorage.setItem('user', JSON.stringify(merged));
+            return merged;
+          });
         })
         .catch(() => {
           localStorage.removeItem('token');
@@ -35,19 +46,23 @@ export function AuthProvider({ children }) {
     try {
       const res = await API.post('/auth/login', { email, password });
       const { token, user } = res.data;
-      
-      // Check if user is blocked
-      if (user.blocked || user.error === 'account_suspended' || user.error === 'account_deactivated') {
+
+      if (
+        user.blocked ||
+        user.error === 'account_suspended' ||
+        user.error === 'account_deactivated'
+      ) {
         return { blocked: true, ...user };
       }
-      
+
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
       API.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setUser(user);
+
+      // MERGE into any pre-existing user object
+      setUser((prev) => ({ ...(prev || {}), ...user }));
       return { user };
     } catch (error) {
-      // Check if error response contains blocked info
       if (error.response?.data?.blocked) {
         return { blocked: true, ...error.response.data };
       }
@@ -60,7 +75,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('token', res.data.token);
     localStorage.setItem('user', JSON.stringify(res.data.user));
     API.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
-    setUser(res.data.user);
+    setUser((prev) => ({ ...(prev || {}), ...res.data.user }));
     return res.data;
   };
 
@@ -71,8 +86,23 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  /**
+   * Public helper for pages/components that need to update a piece of the
+   * user (e.g. ProfilePage after a successful avatar upload).
+   * Merges instead of replacing, and syncs localStorage.
+   */
+  const patchUser = (patch) => {
+    setUser((prev) => {
+      const merged = { ...(prev || {}), ...patch };
+      localStorage.setItem('user', JSON.stringify(merged));
+      return merged;
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, setUser }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, logout, setUser, patchUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

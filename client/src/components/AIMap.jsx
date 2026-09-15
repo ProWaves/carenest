@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from './Toast';
+import { assetUrl } from '../utils/assets';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
@@ -375,14 +376,10 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
     circleRef.current.setRadius(radius * 1000);
   }, [radius]);
 
-  // ============================================================
-  // ✅ Delegated click handler on the map container.
-  //
-  // InfoWindow content is raw HTML, so we can't attach React
-  // handlers directly. Instead, buttons rendered in the InfoWindow
-  // carry a data-babysitter-id attribute, and this single listener
-  // catches clicks on them without needing a window global.
-  // ============================================================
+  // Delegated click handler on the map container.
+  // InfoWindow content is raw HTML, so we can't attach React handlers
+  // directly. Buttons carry a data-babysitter-id attribute and this
+  // single listener catches clicks on them.
   useEffect(() => {
     const container = mapRef.current;
     if (!container) return;
@@ -435,21 +432,31 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
 
         const markerSize = bs.is_verified ? 46 : 40;
 
+        // ✅ If the sitter has an avatar, use it as the marker icon.
+        //    Otherwise fall back to the gradient + initials SVG.
+        const markerIcon = bs.avatar_url
+          ? {
+              url: assetUrl(bs.avatar_url),
+              scaledSize: new window.google.maps.Size(markerSize, markerSize),
+              anchor: new window.google.maps.Point(markerSize / 2, markerSize / 2),
+            }
+          : {
+              url: `data:image/svg+xml,${encodeURIComponent(`
+                <svg xmlns="http://www.w3.org/2000/svg" width="${markerSize}" height="${markerSize}" viewBox="0 0 ${markerSize} ${markerSize}">
+                  <circle cx="${markerSize/2}" cy="${markerSize/2}" r="${markerSize/2 - 2}" fill="${markerColor}" stroke="white" stroke-width="2"/>
+                  <text x="${markerSize/2}" y="${markerSize/2 + 6}" font-size="${markerSize > 40 ? 18 : 14}" text-anchor="middle" fill="white" font-weight="bold" font-family="Arial">${bs.first_name ? bs.first_name[0] : ''}${bs.last_name ? bs.last_name[0] : ''}</text>
+                  ${bs.is_verified ? `<circle cx="${markerSize - 10}" cy="10" r="6" fill="#10b981" stroke="white" stroke-width="1.5"/>` : ''}
+                </svg>
+              `)}`,
+              scaledSize: new window.google.maps.Size(markerSize, markerSize),
+              anchor: new window.google.maps.Point(markerSize / 2, markerSize / 2),
+            };
+
         const marker = new window.google.maps.Marker({
           position: { lat, lng },
           map: mapInstanceRef.current,
           animation: window.google.maps.Animation.DROP,
-          icon: {
-            url: `data:image/svg+xml,${encodeURIComponent(`
-              <svg xmlns="http://www.w3.org/2000/svg" width="${markerSize}" height="${markerSize}" viewBox="0 0 ${markerSize} ${markerSize}">
-                <circle cx="${markerSize/2}" cy="${markerSize/2}" r="${markerSize/2 - 2}" fill="${markerColor}" stroke="white" stroke-width="2"/>
-                <text x="${markerSize/2}" y="${markerSize/2 + 6}" font-size="${markerSize > 40 ? 18 : 14}" text-anchor="middle" fill="white" font-weight="bold" font-family="Arial">${bs.first_name ? bs.first_name[0] : ''}${bs.last_name ? bs.last_name[0] : ''}</text>
-                ${bs.is_verified ? `<circle cx="${markerSize - 10}" cy="10" r="6" fill="#10b981" stroke="white" stroke-width="1.5"/>` : ''}
-              </svg>
-            `)}`,
-            scaledSize: new window.google.maps.Size(markerSize, markerSize),
-            anchor: new window.google.maps.Point(markerSize/2, markerSize/2),
-          },
+          icon: markerIcon,
           title: `${bs.first_name || ''} ${bs.last_name || ''} - ${bs.distance_km || '?'}km away`,
           zIndex: bs.is_verified ? 100 : 50,
         });
@@ -458,13 +465,17 @@ function AIMap({ onSelectBabysitter, showNearby = true, initialLat, initialLng }
         const statusText = isFresh ? '🟢 Online now' : isStale ? `🟡 Last seen ${bs.location_updated_minutes_ago} min ago` : '📍 Location unknown';
         const distanceDisplay = bs.distance_km ? `${bs.distance_km} km away` : 'Distance unknown';
 
-        // ✅ Use data-babysitter-id instead of onclick="window.selectBabysitter(...)"
+        // ✅ Use the sitter's real photo in the InfoWindow if available;
+        //    otherwise fall back to gradient initials.
+        const avatarHtml = bs.avatar_url
+          ? `<img src="${assetUrl(bs.avatar_url)}" alt="" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+          : `<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px;flex-shrink:0;">${bs.first_name ? bs.first_name[0] : ''}${bs.last_name ? bs.last_name[0] : ''}</div>`;
+
+        // Use data-babysitter-id instead of onclick="window.selectBabysitter(...)"
         const content = `
           <div style="padding: 8px 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-width: 200px;">
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-              <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; flex-shrink: 0;">
-                ${bs.first_name ? bs.first_name[0] : ''}${bs.last_name ? bs.last_name[0] : ''}
-              </div>
+              ${avatarHtml}
               <div style="flex: 1;">
                 <div style="font-weight: 600; font-size: 15px; color: #1e293b;">${bs.first_name || ''} ${bs.last_name || ''}</div>
                 <div style="font-size: 12px; color: #64748b;">${distanceDisplay}</div>

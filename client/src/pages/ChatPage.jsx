@@ -7,13 +7,7 @@ import { useSocket } from '../context/SocketContext';
 import { playMessageSound } from '../utils/sounds';
 import BackButton from '../components/BackButton';
 import AIChatbot from '../components/AIChatbotGate';
-
-const ASSET_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
-const assetUrl = (path) => {
-  if (!path) return '';
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  return `${ASSET_BASE}${path}`;
-};
+import Avatar from '../components/Avatar';
 
 function ChatPage() {
   const { userId: paramUserId } = useParams();
@@ -72,7 +66,12 @@ function ChatPage() {
     API.get('/chat/conversations').then((r) => setConversations(r.data)).catch(console.error);
   }, []);
 
-  // Resolve active user + load messages when route changes
+  // Resolve active user + load messages when route changes.
+  //
+  // If the target user isn't in our conversation list yet (e.g. we just
+  // clicked "Message" from a booking, a job, or a profile page), we fetch
+  // their public profile once so we have their avatar_url available for
+  // the header and for received-message bubbles.
   useEffect(() => {
     if (paramUserId) {
       const conv = conversations.find((c) => c.user_id == paramUserId);
@@ -134,6 +133,7 @@ function ChatPage() {
         user_id: activeUser.user_id,
         first_name: activeUser.first_name,
         last_name: activeUser.last_name,
+        avatar_url: activeUser.avatar_url,
         last_message: text,
         last_message_time: new Date().toISOString(),
         unread_count: 0,
@@ -208,19 +208,15 @@ function ChatPage() {
                 onClick={() => selectConversation(conv)}
               >
                 <div className="conv-avatar-wrap">
-  <div className="conv-avatar" style={{ overflow: 'hidden' }}>
-    {conv.avatar_url ? (
-      <img
-        src={assetUrl(conv.avatar_url)}
-        alt=""
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-      />
-    ) : (
-      <>{conv.first_name?.[0]}{conv.last_name?.[0]}</>
-    )}
-  </div>
-  {isOnline(conv.user_id) && <span className="conv-online-dot" />}
-</div>
+                  <Avatar
+                    avatarUrl={conv.avatar_url}
+                    firstName={conv.first_name}
+                    lastName={conv.last_name}
+                    size={44}
+                    shape="rounded"
+                  />
+                  {isOnline(conv.user_id) && <span className="conv-online-dot" />}
+                </div>
                 <div className="conv-info">
                   <div className="conv-top-row">
                     <span className="conv-name">{conv.first_name} {conv.last_name}</span>
@@ -248,19 +244,15 @@ function ChatPage() {
             <>
               <div className="chat-header">
                 <div className="chat-header-avatar-wrap">
-  <div className="chat-header-avatar" style={{ overflow: 'hidden' }}>
-    {activeUser.avatar_url ? (
-      <img
-        src={assetUrl(activeUser.avatar_url)}
-        alt=""
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-      />
-    ) : (
-      <>{activeUser.first_name?.[0]}{activeUser.last_name?.[0]}</>
-    )}
-  </div>
-  {isOnline(activeUser.user_id) && <span className="chat-header-online-dot" />}
-</div>
+                  <Avatar
+                    avatarUrl={activeUser.avatar_url}
+                    firstName={activeUser.first_name}
+                    lastName={activeUser.last_name}
+                    size={40}
+                    shape="rounded"
+                  />
+                  {isOnline(activeUser.user_id) && <span className="chat-header-online-dot" />}
+                </div>
                 <div className="chat-header-info">
                   <strong>{activeUser.first_name} {activeUser.last_name}</strong>
                   <span className={`chat-header-status ${isOnline(activeUser.user_id) ? 'online' : ''}`}>
@@ -281,18 +273,14 @@ function ChatPage() {
                   return (
                     <div key={msg.id} className={`message ${isSent ? 'sent' : 'received'}`}>
                       {!isSent && (
-  <div className="message-avatar" style={{ overflow: 'hidden' }}>
-    {activeUser.avatar_url ? (
-      <img
-        src={assetUrl(activeUser.avatar_url)}
-        alt=""
-        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-      />
-    ) : (
-      <>{activeUser.first_name?.[0]}{activeUser.last_name?.[0]}</>
-    )}
-  </div>
-)}
+                        <Avatar
+                          avatarUrl={msg.avatar_url || activeUser.avatar_url}
+                          firstName={msg.first_name || activeUser.first_name}
+                          lastName={msg.last_name || activeUser.last_name}
+                          size={30}
+                          shape="rounded"
+                        />
+                      )}
                       <div className="message-body">
                         <div className="message-bubble">{msg.content}</div>
                         <div className="message-meta">

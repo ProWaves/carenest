@@ -14,7 +14,8 @@ const router = express.Router();
 
 // GET /api/chat/conversations
 // Returns all unique conversations for the authenticated user, each with the
-// last message preview, timestamp, and unread count. Sorted by most recent.
+// last message preview, timestamp, unread count, and counterparty avatar.
+// Sorted by most recent.
 router.get('/conversations', authenticate, async (req, res) => {
   try {
     const result = await db.query(
@@ -40,6 +41,7 @@ router.get('/conversations', authenticate, async (req, res) => {
 // GET /api/chat/:userId
 // Returns messages between the current user and another user.
 // Optionally filtered by booking_id. Marks incoming messages as read.
+// Every message includes the sender's avatar_url.
 router.get('/:userId', authenticate, async (req, res) => {
   try {
     const { userId } = req.params;
@@ -49,7 +51,7 @@ router.get('/:userId', authenticate, async (req, res) => {
     let params;
     if (booking_id) {
       // Filter by booking context
-      sql = `SELECT m.*, u.first_name, u.last_name
+      sql = `SELECT m.*, u.first_name, u.last_name, u.avatar_url
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              WHERE ((m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1))
@@ -58,7 +60,7 @@ router.get('/:userId', authenticate, async (req, res) => {
       params = [req.user.id, userId, booking_id];
     } else {
       // All messages between the two users
-      sql = `SELECT m.*, u.first_name, u.last_name
+      sql = `SELECT m.*, u.first_name, u.last_name, u.avatar_url
              FROM messages m
              JOIN users u ON u.id = m.sender_id
              WHERE (m.sender_id = $1 AND m.receiver_id = $2) OR (m.sender_id = $2 AND m.receiver_id = $1)
@@ -76,12 +78,15 @@ router.get('/:userId', authenticate, async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
+    console.error('Get messages error:', error);
     res.status(500).json({ error: 'Server error.' });
   }
 });
 
 // POST /api/chat
 // Sends a new message from the authenticated user to a receiver.
+// Response includes the sender's avatar_url so the client can render
+// the outgoing bubble immediately.
 router.post('/', authenticate, async (req, res) => {
   try {
     const { receiver_id, content, booking_id } = req.body;
@@ -95,9 +100,9 @@ router.post('/', authenticate, async (req, res) => {
       [req.user.id, receiver_id, content, booking_id || null]
     );
 
-    // Fetch the full message with sender info
+    // Fetch the full message with sender info + avatar
     const message = await db.query(
-      'SELECT m.*, u.first_name, u.last_name FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = $1',
+      'SELECT m.*, u.first_name, u.last_name, u.avatar_url FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = $1',
       [result.rows[0].id]
     );
 

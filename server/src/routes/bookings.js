@@ -14,12 +14,18 @@ router.get('/', authenticate, async (req, res) => {
 
     let sql, params;
     if (req.user.role === 'parent') {
+      // ✅ Parent view: include the babysitter's avatar + contact info
       sql = `
         SELECT b.*, 
-          u.first_name as babysitter_first_name, u.last_name as babysitter_last_name,
+          u.first_name as babysitter_first_name,
+          u.last_name as babysitter_last_name,
+          u.avatar_url as babysitter_avatar_url,
+          u.phone as babysitter_phone,
+          u.city as babysitter_city,
           c.name as child_name,
           b.cancellation_reason,
-          uc.first_name as cancelled_by_first_name, uc.last_name as cancelled_by_last_name
+          uc.first_name as cancelled_by_first_name,
+          uc.last_name as cancelled_by_last_name
         FROM bookings b
         JOIN users u ON u.id = b.babysitter_id
         LEFT JOIN children c ON c.id = b.child_id
@@ -28,12 +34,18 @@ router.get('/', authenticate, async (req, res) => {
         ORDER BY b.created_at DESC`;
       params = [req.user.id];
     } else if (req.user.role === 'babysitter') {
+      // ✅ Babysitter view: include the parent's avatar + contact info
       sql = `
         SELECT b.*, 
-          u.first_name as parent_first_name, u.last_name as parent_last_name,
+          u.first_name as parent_first_name,
+          u.last_name as parent_last_name,
+          u.avatar_url as parent_avatar_url,
+          u.phone as parent_phone,
+          u.city as parent_city,
           c.name as child_name,
           b.cancellation_reason,
-          uc.first_name as cancelled_by_first_name, uc.last_name as cancelled_by_last_name
+          uc.first_name as cancelled_by_first_name,
+          uc.last_name as cancelled_by_last_name
         FROM bookings b
         JOIN users u ON u.id = b.parent_id
         LEFT JOIN children c ON c.id = b.child_id
@@ -42,12 +54,18 @@ router.get('/', authenticate, async (req, res) => {
         ORDER BY b.created_at DESC`;
       params = [req.user.id];
     } else {
+      // ✅ Admin view: include both avatars
       sql = `
         SELECT b.*, 
-          p.first_name as parent_first_name, p.last_name as parent_last_name,
-          s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+          p.first_name as parent_first_name,
+          p.last_name as parent_last_name,
+          p.avatar_url as parent_avatar_url,
+          s.first_name as babysitter_first_name,
+          s.last_name as babysitter_last_name,
+          s.avatar_url as babysitter_avatar_url,
           b.cancellation_reason,
-          uc.first_name as cancelled_by_first_name, uc.last_name as cancelled_by_last_name
+          uc.first_name as cancelled_by_first_name,
+          uc.last_name as cancelled_by_last_name
         FROM bookings b
         JOIN users p ON p.id = b.parent_id
         JOIN users s ON s.id = b.babysitter_id
@@ -75,10 +93,9 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
       babysitter_id, child_id,
       start_date, end_date, start_time, end_time,
       notes, slot_ids,
-      payment_method,          // 👈 NEW
+      payment_method,
     } = req.body;
 
-    // ✅ Validate date/time presence before doing anything else
     if (!start_date || !end_date || !start_time || !end_time) {
       return res.status(400).json({
         error: 'Missing required date/time fields.',
@@ -86,7 +103,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
       });
     }
 
-    // ✅ Validate parent is not suspended
     const parentCheck = await db.query(
       'SELECT suspended_at FROM users WHERE id = $1',
       [req.user.id]
@@ -95,7 +111,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
       return res.status(403).json({ error: 'Your account is suspended. Cannot make bookings.' });
     }
 
-    // Check if babysitter is suspended
     const sitterCheck = await db.query(
       `SELECT u.suspended_at, bp.status, bp.hourly_rate, bp.payment_preference
        FROM users u 
@@ -113,7 +128,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
       return res.status(403).json({ error: 'Babysitter profile not approved.' });
     }
 
-    // ── Resolve and validate payment method ─────────────────────
     const sitterPref = sitterCheck.rows[0].payment_preference || 'both';
     const chosenMethod = (payment_method || 'cash').toLowerCase();
 
@@ -130,10 +144,8 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
       });
     }
 
-    // Get hourly rate
     const hourlyRate = parseFloat(sitterCheck.rows[0].hourly_rate) || 15;
 
-    // Calculate total
     const startDateTime = new Date(`${start_date}T${start_time}`);
     const endDateTime = new Date(`${end_date}T${end_time}`);
 
@@ -150,13 +162,11 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
     console.log(`💰 Booking calculation: ${totalHours}h × $${hourlyRate} = $${totalAmount}`);
     console.log(`💳 Payment method: ${chosenMethod} (sitter pref: ${sitterPref})`);
 
-    // Begin transaction
     const client = await db.pool.connect();
 
     try {
       await client.query('BEGIN');
 
-      // ✅ Reject if this babysitter is already booked for an overlapping window
       const conflict = await client.query(
         `SELECT id FROM bookings
          WHERE babysitter_id = $1
@@ -183,7 +193,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
         });
       }
 
-      // ✅ If slot_ids were provided, verify and lock them
       let validSlotIds = [];
       if (slot_ids && Array.isArray(slot_ids) && slot_ids.length > 0) {
         const slotsRes = await client.query(
@@ -211,7 +220,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
         }
       }
 
-      // Create booking (with payment_method)
       const result = await client.query(
         `INSERT INTO bookings (
             parent_id, babysitter_id, child_id,
@@ -231,7 +239,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 
       const booking = result.rows[0];
 
-      // Mark the verified slots as booked
       if (validSlotIds.length > 0) {
         await client.query(
           `UPDATE babysitter_availability 
@@ -245,7 +252,6 @@ router.post('/', authenticate, authorize('parent'), async (req, res) => {
 
       await client.query('COMMIT');
 
-      // Notify babysitter
       await createNotification(
         parseInt(babysitter_id),
         'new_booking',
@@ -430,8 +436,12 @@ router.get('/:id', authenticate, async (req, res) => {
     const { id } = req.params;
     const result = await db.query(
       `SELECT b.*,
-        p.first_name as parent_first_name, p.last_name as parent_last_name, p.phone as parent_phone, p.city as parent_city,
-        s.first_name as babysitter_first_name, s.last_name as babysitter_last_name, s.phone as babysitter_phone, s.city as babysitter_city,
+        p.first_name as parent_first_name, p.last_name as parent_last_name,
+        p.phone as parent_phone, p.city as parent_city,
+        p.avatar_url as parent_avatar_url,
+        s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+        s.phone as babysitter_phone, s.city as babysitter_city,
+        s.avatar_url as babysitter_avatar_url,
         c.name as child_name, c.age as child_age,
         b.cancellation_reason,
         uc.first_name as cancelled_by_first_name, uc.last_name as cancelled_by_last_name
@@ -506,6 +516,7 @@ router.get('/parent-reviews', authenticate, async (req, res) => {
     if (req.user.role === 'parent') {
       query = `
         SELECT pr.*, s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+               s.avatar_url as babysitter_avatar_url,
                b.start_date, b.end_date
         FROM parent_reviews pr
         JOIN users s ON s.id = pr.babysitter_id
@@ -517,6 +528,7 @@ router.get('/parent-reviews', authenticate, async (req, res) => {
     } else if (req.user.role === 'babysitter') {
       query = `
         SELECT pr.*, p.first_name as parent_first_name, p.last_name as parent_last_name,
+               p.avatar_url as parent_avatar_url,
                b.start_date, b.end_date
         FROM parent_reviews pr
         JOIN users p ON p.id = pr.parent_id
@@ -528,7 +540,9 @@ router.get('/parent-reviews', authenticate, async (req, res) => {
     } else {
       query = `
         SELECT pr.*, p.first_name as parent_first_name, p.last_name as parent_last_name,
+               p.avatar_url as parent_avatar_url,
                s.first_name as babysitter_first_name, s.last_name as babysitter_last_name,
+               s.avatar_url as babysitter_avatar_url,
                b.start_date, b.end_date
         FROM parent_reviews pr
         JOIN users p ON p.id = pr.parent_id

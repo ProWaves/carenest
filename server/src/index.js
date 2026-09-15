@@ -121,7 +121,13 @@ const db = require('./config/database');
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+const fs = require('fs');
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log(`📁 Created uploads dir: ${uploadsDir}`);
+}
+app.use('/uploads', express.static(uploadsDir));
 
 // ============================================
 // API ROUTES

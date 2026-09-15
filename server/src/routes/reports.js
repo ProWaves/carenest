@@ -33,7 +33,6 @@ async function checkAndApplySuspension(userId) {
   const warnings = await getUserWarnings(userId);
 
   if (warnings.count >= 3) {
-    // Auto-suspend for 7 days
     const suspensionEnd = new Date();
     suspensionEnd.setDate(suspensionEnd.getDate() + 7);
 
@@ -55,7 +54,6 @@ async function checkAndApplySuspension(userId) {
       '/dashboard'
     );
 
-    // Notify admins
     const admins = await db.query("SELECT id FROM users WHERE role = 'admin' AND is_active = true");
     for (const admin of admins.rows) {
       await createNotification(
@@ -77,17 +75,14 @@ async function checkAndApplySuspension(userId) {
 // MODERATION ACTION HANDLERS
 // ============================================
 
-// 1. WARNING HANDLER
 async function handleWarning(report, message, adminId) {
   try {
-    // Create warning record
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
       [adminId, 'warning', 'user', report.user_id, JSON.stringify({ message, report_id: report.id })]
     );
 
-    // Notify user
     await createNotification(
       report.user_id,
       'warning_received',
@@ -96,12 +91,10 @@ async function handleWarning(report, message, adminId) {
       '/dashboard'
     );
 
-    // Check if user now has 3 warnings
     const warnings = await getUserWarnings(report.user_id);
 
     if (warnings.count >= 3) {
-      // Auto-suspend
-      const suspensionResult = await checkAndApplySuspension(report.user_id);
+      await checkAndApplySuspension(report.user_id);
       return {
         action: 'warning',
         message: `Warning issued. User now has ${warnings.count} warnings. Account auto-suspended for 7 days.`,
@@ -123,7 +116,6 @@ async function handleWarning(report, message, adminId) {
   }
 }
 
-// 2. SUSPENSION HANDLER
 async function handleSuspension(report, reason, duration, adminId) {
   try {
     const suspensionEnd = new Date();
@@ -154,7 +146,6 @@ async function handleSuspension(report, reason, duration, adminId) {
       '/dashboard'
     );
 
-    // Notify admins
     const admins = await db.query("SELECT id FROM users WHERE role = 'admin' AND is_active = true");
     for (const admin of admins.rows) {
       await createNotification(
@@ -178,10 +169,8 @@ async function handleSuspension(report, reason, duration, adminId) {
   }
 }
 
-// 3. BAN HANDLER
 async function handleBan(report, reason, adminId) {
   try {
-    // Ban - permanent account block
     await db.query(
       `UPDATE users 
        SET is_active = false,
@@ -199,7 +188,6 @@ async function handleBan(report, reason, adminId) {
       [adminId, 'ban', 'user', report.user_id, JSON.stringify({ reason, report_id: report.id })]
     );
 
-    // Notify user
     await createNotification(
       report.user_id,
       'account_banned',
@@ -208,7 +196,6 @@ async function handleBan(report, reason, adminId) {
       '/dashboard'
     );
 
-    // Notify admins
     const admins = await db.query("SELECT id FROM users WHERE role = 'admin' AND is_active = true");
     for (const admin of admins.rows) {
       await createNotification(
@@ -230,7 +217,6 @@ async function handleBan(report, reason, adminId) {
   }
 }
 
-// 4. REFUND HANDLER
 async function handleRefund(report, amount, adminId) {
   try {
     const refundAmount = amount || report.refund_amount || 0;
@@ -268,7 +254,6 @@ async function handleRefund(report, amount, adminId) {
   }
 }
 
-// 5. DISMISS HANDLER
 async function handleDismiss(report, reason, adminId) {
   try {
     await db.query(
@@ -314,14 +299,12 @@ router.post('/', authenticate, async (req, res) => {
       refund_amount 
     } = req.body;
 
-    // Validate required fields
     if (!reported_user_id || !category || !reason) {
       return res.status(400).json({ 
         error: 'Reported user, category, and reason are required.' 
       });
     }
 
-    // Validate category
     const validCategories = [
       'unprofessional_behavior', 'no_show', 'late_arrival',
       'cancellation_without_notice', 'inappropriate_conduct',
@@ -334,7 +317,6 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Invalid report category.' });
     }
 
-    // Check if reported user exists
     const reportedUser = await db.query(
       'SELECT id, role, first_name, last_name, email, is_active, suspended_at FROM users WHERE id = $1',
       [reported_user_id]
@@ -344,12 +326,10 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Reported user not found.' });
     }
 
-    // Prevent self-reporting
     if (reported_user_id === req.user.id) {
       return res.status(400).json({ error: 'You cannot report yourself.' });
     }
 
-    // Check if booking exists
     if (booking_id) {
       const booking = await db.query(
         `SELECT * FROM bookings WHERE id = $1 AND (parent_id = $2 OR babysitter_id = $2)`,
@@ -360,7 +340,6 @@ router.post('/', authenticate, async (req, res) => {
       }
     }
 
-    // Check for duplicate pending reports
     const duplicate = await db.query(
       `SELECT id FROM reports 
        WHERE reporter_id = $1 AND reported_user_id = $2 
@@ -373,7 +352,6 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(409).json({ error: 'You already have a pending report for this user/booking.' });
     }
 
-    // Handle refund amount
     let refundAmountValue = null;
     if (refund_requested && refund_amount) {
       const parsed = parseFloat(refund_amount);
@@ -382,7 +360,6 @@ router.post('/', authenticate, async (req, res) => {
       }
     }
 
-    // Insert report
     const result = await db.query(
       `INSERT INTO reports (
         reporter_id, reported_user_id, booking_id, category, reason, description, 
@@ -404,7 +381,6 @@ router.post('/', authenticate, async (req, res) => {
 
     console.log('✅ Report created:', result.rows[0].id);
 
-    // Notify admins
     const admins = await db.query("SELECT id FROM users WHERE role = 'admin' AND is_active = true");
     const reporter = await db.query(
       'SELECT first_name, last_name FROM users WHERE id = $1',
@@ -450,7 +426,7 @@ router.put('/admin/:id', authenticate, authorize('admin'), async (req, res) => {
       refund_amount,
       warning_message,
       suspension_duration = 7,
-      suspension_reason,   // ✅ dedicated field, separate from admin_notes
+      suspension_reason,
       ban_reason
     } = req.body;
 
@@ -462,7 +438,6 @@ router.put('/admin/:id', authenticate, authorize('admin'), async (req, res) => {
       return res.status(400).json({ error: 'Invalid status.' });
     }
 
-    // Get report details
     const report = await db.query(
       `SELECT r.*, u.id as user_id, u.email, u.first_name, u.last_name, u.role,
               u.suspended_at, u.is_active
@@ -479,16 +454,12 @@ router.put('/admin/:id', authenticate, authorize('admin'), async (req, res) => {
     const reportData = report.rows[0];
     let actionResult = {};
 
-    // Handle different admin actions
     if (admin_action) {
       switch (admin_action) {
         case 'warning':
           actionResult = await handleWarning(reportData, warning_message, req.user.id);
           break;
         case 'suspension':
-          // ✅ Prefer the dedicated suspension_reason field. Fall back to
-          //    admin_notes so existing web clients that only send admin_notes
-          //    keep working.
           actionResult = await handleSuspension(
             reportData,
             suspension_reason || admin_notes,
@@ -508,7 +479,6 @@ router.put('/admin/:id', authenticate, authorize('admin'), async (req, res) => {
       }
     }
 
-    // Handle refund amount for numeric column
     let refundAmountValue = null;
     if (refund_amount !== undefined && refund_amount !== null && refund_amount !== '') {
       const parsed = parseFloat(refund_amount);
@@ -517,7 +487,6 @@ router.put('/admin/:id', authenticate, authorize('admin'), async (req, res) => {
       }
     }
 
-    // Update report
     const result = await db.query(
       `UPDATE reports 
        SET status = $1, 
@@ -539,7 +508,6 @@ router.put('/admin/:id', authenticate, authorize('admin'), async (req, res) => {
       ]
     );
 
-    // Notify reporter
     await createNotification(
       reportData.reporter_id,
       'report_updated',
@@ -560,7 +528,7 @@ router.put('/admin/:id', authenticate, authorize('admin'), async (req, res) => {
 });
 
 // ============================================
-// ADMIN - RESTORE USER (Remove suspension/ban)
+// ADMIN - RESTORE USER
 // ============================================
 router.put('/restore/:userId', authenticate, authorize('admin'), async (req, res) => {
   try {
@@ -580,7 +548,6 @@ router.put('/restore/:userId', authenticate, authorize('admin'), async (req, res
       return res.status(400).json({ error: 'User is not suspended.' });
     }
 
-    // Restore user
     await db.query(
       `UPDATE users 
        SET suspended_at = NULL,
@@ -591,14 +558,12 @@ router.put('/restore/:userId', authenticate, authorize('admin'), async (req, res
       [userId]
     );
 
-    // Log action
     await db.query(
       `INSERT INTO admin_activity_log (admin_id, action, target_type, target_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
       [req.user.id, 'restore_user', 'user', userId, JSON.stringify({ reason: reason || 'Restored by admin' })]
     );
 
-    // Notify user
     await createNotification(
       userId,
       'account_restored',
@@ -627,7 +592,7 @@ router.get('/warnings/:userId', authenticate, authorize('admin'), async (req, re
 
     const details = await db.query(
       `SELECT r.id, r.reason, r.created_at, r.admin_notes,
-              u.first_name, u.last_name, u.email
+              u.first_name, u.last_name, u.email, u.avatar_url
        FROM reports r
        JOIN users u ON u.id = r.admin_id
        WHERE r.reported_user_id = $1 
@@ -658,7 +623,9 @@ router.get('/my-reports', authenticate, async (req, res) => {
       `SELECT r.*, 
         u.first_name as reported_first_name, u.last_name as reported_last_name,
         u.email as reported_email, u.role as reported_role,
+        u.avatar_url as reported_avatar_url,
         rep.first_name as reporter_first_name, rep.last_name as reporter_last_name,
+        rep.avatar_url as reporter_avatar_url,
         b.start_date, b.end_date
       FROM reports r
       JOIN users u ON u.id = r.reported_user_id
@@ -685,7 +652,9 @@ router.get('/admin/all', authenticate, authorize('admin'), async (req, res) => {
     let query = `
       SELECT r.*, 
         rep.first_name as reporter_first_name, rep.last_name as reporter_last_name, rep.email as reporter_email,
+        rep.avatar_url as reporter_avatar_url,
         u.first_name as reported_first_name, u.last_name as reported_last_name, u.email as reported_email,
+        u.avatar_url as reported_avatar_url,
         u.role as reported_role,
         u.suspended_at, u.is_active, u.suspension_end_date,
         b.start_date, b.end_date, b.total_amount
@@ -727,7 +696,6 @@ router.get('/admin/all', authenticate, authorize('admin'), async (req, res) => {
 
     const result = await db.query(query, params);
 
-    // Get count
     let countQuery = 'SELECT COUNT(*) as total FROM reports r WHERE 1=1';
     const countParams = [];
     let countIndex = 1;
@@ -786,14 +754,13 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
       FROM reports
     `);
 
-    // Users with most warnings
     const topWarned = await db.query(`
-      SELECT u.id, u.first_name, u.last_name, u.email,
+      SELECT u.id, u.first_name, u.last_name, u.email, u.avatar_url,
         COUNT(r.id) as warning_count
       FROM users u
       JOIN reports r ON r.reported_user_id = u.id
       WHERE r.admin_action = 'warning' AND r.status = 'resolved'
-      GROUP BY u.id, u.first_name, u.last_name, u.email
+      GROUP BY u.id, u.first_name, u.last_name, u.email, u.avatar_url
       ORDER BY warning_count DESC
       LIMIT 10
     `);
@@ -812,13 +779,13 @@ router.get('/admin/stats', authenticate, authorize('admin'), async (req, res) =>
 // REFUND ROUTES
 // ============================================
 
-// GET /api/reports/refunds - Get user's refunds
 router.get('/refunds', authenticate, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT r.*, 
         b.start_date, b.end_date, b.total_amount,
-        u.first_name as processed_by_first_name, u.last_name as processed_by_last_name
+        u.first_name as processed_by_first_name, u.last_name as processed_by_last_name,
+        u.avatar_url as processed_by_avatar_url
        FROM refunds r
        JOIN bookings b ON b.id = r.booking_id
        LEFT JOIN users u ON u.id = r.processed_by
@@ -833,7 +800,6 @@ router.get('/refunds', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/reports/refunds/admin - Admin view all refunds
 router.get('/refunds/admin', authenticate, authorize('admin'), async (req, res) => {
   try {
     const { status } = req.query;
@@ -841,7 +807,9 @@ router.get('/refunds/admin', authenticate, authorize('admin'), async (req, res) 
       SELECT r.*, 
         b.start_date, b.end_date, b.total_amount,
         u.first_name as user_first_name, u.last_name as user_last_name,
+        u.avatar_url as user_avatar_url,
         adm.first_name as admin_first_name, adm.last_name as admin_last_name,
+        adm.avatar_url as admin_avatar_url,
         rep.reason as report_reason
       FROM refunds r
       JOIN bookings b ON b.id = r.booking_id

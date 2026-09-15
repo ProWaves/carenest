@@ -7,6 +7,7 @@ import { SkeletonList } from '../components/Skeleton';
 import BackButton from '../components/BackButton';
 import AIChatbot from '../components/AIChatbotGate';
 import AIMap from '../components/AIMap';
+import Avatar from '../components/Avatar';
 
 function FindBabysitters() {
   const navigate = useNavigate();
@@ -128,7 +129,6 @@ function FindBabysitters() {
         </div>
       )}
 
-      {/* ✅ Map View — navigate via React Router, not window.location.href */}
       {showMap && (
         <div style={{ marginBottom: '24px' }}>
           <AIMap
@@ -198,7 +198,7 @@ function FindBabysitters() {
             {data.babysitters.map((s) => (
               <Link to={`/babysitters/${s.id}`} key={s.id} className="babysitter-card">
                 <div className="babysitter-card-header">
-                  <div className="avatar">{s.first_name?.[0]}{s.last_name?.[0]}</div>
+                  <Avatar user={s} size={52} />
                   <div>
                     {s.is_verified ? (
                       <span className="badge badge-success">{String.fromCodePoint(10003)} {t('babysitter.verified')}</span>
