@@ -70,6 +70,7 @@ router.get('/', async (req, res) => {
 
     const selectColumns = `u.id, u.first_name, u.last_name, u.city, u.language, u.gender, u.avatar_url,
         bp.hourly_rate, bp.experience_years, bp.bio, bp.is_verified, bp.skills,
+        bp.payment_preference,
         (SELECT COALESCE(AVG(rating), 0) FROM reviews WHERE babysitter_id = u.id) as avg_rating,
         (SELECT COUNT(*) FROM reviews WHERE babysitter_id = u.id) as review_count`;
 
@@ -334,10 +335,23 @@ router.get('/profile/me', authenticate, authorize('babysitter'), async (req, res
   }
 });
 
-// PUT /api/babysitters/profile
+// PUT /api/babysitters/profile — UPDATED with payment_preference
 router.put('/profile', authenticate, authorize('babysitter'), async (req, res) => {
   try {
-    const { bio, experience_years, hourly_rate, skills, emergency_contact_name, emergency_contact_phone } = req.body;
+    const { 
+      bio, 
+      experience_years, 
+      hourly_rate, 
+      skills, 
+      emergency_contact_name, 
+      emergency_contact_phone,
+      payment_preference,
+    } = req.body;
+
+    // ✅ Validate payment_preference if provided
+    if (payment_preference && !['cash', 'online', 'both'].includes(payment_preference)) {
+      return res.status(400).json({ error: 'Invalid payment_preference. Must be cash, online, or both.' });
+    }
 
     const userCheck = await db.query('SELECT suspended_at, is_active FROM users WHERE id = $1', [req.user.id]);
     if (userCheck.rows[0]?.suspended_at) {
@@ -355,10 +369,20 @@ router.put('/profile', authenticate, authorize('babysitter'), async (req, res) =
         skills = COALESCE($4, skills),
         emergency_contact_name = COALESCE($5, emergency_contact_name),
         emergency_contact_phone = COALESCE($6, emergency_contact_phone),
+        payment_preference = COALESCE($7, payment_preference),
         updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = $7
+       WHERE user_id = $8
        RETURNING *`,
-      [bio, experience_years, hourly_rate, skills || [], emergency_contact_name || null, emergency_contact_phone || null, req.user.id]
+      [
+        bio,
+        experience_years,
+        hourly_rate,
+        skills || [],
+        emergency_contact_name || null,
+        emergency_contact_phone || null,
+        payment_preference || null,
+        req.user.id,
+      ]
     );
     res.json(result.rows[0]);
   } catch (error) {
@@ -983,7 +1007,6 @@ router.put('/gallery/:imageId/primary', authenticate, authorize('babysitter'), a
 // 8. LOCATION ROUTES (AUTHENTICATED)
 // ============================================
 
-// POST /api/babysitters/location
 router.post('/location', authenticate, async (req, res) => {
   try {
     const { latitude, longitude, is_sharing } = req.body;
@@ -1067,7 +1090,6 @@ router.post('/location', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/babysitters/location/me
 router.get('/location/me', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const tableCheck = await db.query(`
@@ -1115,7 +1137,6 @@ router.get('/location/me', authenticate, authorize('babysitter'), async (req, re
   }
 });
 
-// PUT /api/babysitters/location/share
 router.put('/location/share', authenticate, authorize('babysitter'), async (req, res) => {
   try {
     const { is_sharing } = req.body;
@@ -1152,7 +1173,6 @@ router.put('/location/share', authenticate, authorize('babysitter'), async (req,
   }
 });
 
-// GET /api/babysitters/location
 router.get('/location', authenticate, async (req, res) => {
   try {
     const tableCheck = await db.query(`
@@ -1186,7 +1206,6 @@ router.get('/location', authenticate, async (req, res) => {
 // 9. THE CATCH-ALL /:id ROUTE MUST BE LAST
 // ============================================
 
-// GET /api/babysitters/:id - Single babysitter profile (PUBLIC)
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -1219,6 +1238,7 @@ router.get('/:id', async (req, res) => {
     const result = await db.query(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.city, u.language, u.gender, u.avatar_url,
         bp.bio, bp.experience_years, bp.hourly_rate, bp.is_verified, bp.status, bp.skills,
+        bp.payment_preference,
         (SELECT COALESCE(AVG(rating), 0) FROM reviews WHERE babysitter_id = u.id) as avg_rating,
         (SELECT COUNT(*) FROM reviews WHERE babysitter_id = u.id) as review_count
       FROM users u
@@ -1235,7 +1255,6 @@ router.get('/:id', async (req, res) => {
       result.rows[0].profile_warning = `Profile status is ${result.rows[0].status}`;
     }
 
-    // ✅ FIXED: include id, is_available, is_published so mobile can parse properly
     try {
       const availability = await db.query(
         `SELECT id, day_of_week, start_time, end_time, is_available, is_published, is_booked
@@ -1288,9 +1307,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  // ✅ Clamp `a` to [0, 1]. Floating-point rounding can push it just
-  //    past 1 for near-identical coordinates, which would make
-  //    Math.sqrt(1 - a) NaN.
   const a = Math.min(1, Math.max(0,
     Math.sin(dLat/2) * Math.sin(dLat/2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
