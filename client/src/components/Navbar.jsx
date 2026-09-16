@@ -115,7 +115,7 @@ function Navbar() {
       <div className="nav-container">
         <Link to="/" className="nav-logo" onClick={() => setMobileOpen(false)}>
           <img
-    src="/logo.jpg"
+    src="/logo1.webp"
     alt="SitterSpot"
     className="logo-img"
     width={45}

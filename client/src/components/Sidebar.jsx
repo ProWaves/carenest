@@ -110,7 +110,7 @@ function Sidebar() {
       <div className="sidebar-logo">
         <Link to="/">
           <img
-      src="/logo.jpg"
+      src="/logo1.webp"
       alt="SitterSpot"
       className="logo-img"
       width={45}
