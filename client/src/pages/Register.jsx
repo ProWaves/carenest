@@ -179,7 +179,7 @@ function Register() {
                     <option value="">--</option>
                     <option value="male">{t('auth.male')}</option>
                     <option value="female">{t('auth.female')}</option>
-                    <option value="other">{t('auth.other')}</option>
+                    
                   </select>
                 </div>
               </div>
