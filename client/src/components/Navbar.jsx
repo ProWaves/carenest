@@ -114,7 +114,13 @@ function Navbar() {
     <nav className="navbar">
       <div className="nav-container">
         <Link to="/" className="nav-logo" onClick={() => setMobileOpen(false)}>
-          <span className="logo-icon">{String.fromCodePoint(9826)}</span>
+          <img
+    src="/logo.jpg"
+    alt="SitterSpot"
+    className="logo-img"
+    width={45}
+      height={45}
+  />
           SitterSpot
         </Link>
 

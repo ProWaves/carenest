@@ -109,7 +109,13 @@ function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-logo">
         <Link to="/">
-          <span className="logo-icon">◈</span>
+          <img
+      src="/logo.jpg"
+      alt="SitterSpot"
+      className="logo-img"
+      width={45}
+      height={45}
+    />
           <span className="logo-text">SitterSpot</span>
         </Link>
       </div>
