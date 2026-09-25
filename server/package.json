@@ -4,7 +4,7 @@
   "description": "SitterSpot Backend",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "npm run db:init && npm run db:migrations && node src/index.js",
     "dev": "nodemon src/index.js",
     "db:init": "node src/models/init.js",
     "db:migrate": "node src/models/migrate.js",
